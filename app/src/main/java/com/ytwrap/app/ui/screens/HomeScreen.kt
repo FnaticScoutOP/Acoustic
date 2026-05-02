@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.BatteryManager
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -591,14 +592,47 @@ private fun ConnectedDeviceCard() {
                         val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
                         val adapter = btManager?.adapter
                         if (adapter != null) {
-                            val connectedDevices = adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                            adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
                                 override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
                                     try {
                                         val btDevices = proxy.connectedDevices
                                         for (btDev in btDevices) {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                // Battery level via hidden API not accessible without reflection
-                                                // Use product name match instead
+                                            // Match the active audio device
+                                            if (btDev.address == activeDevice?.address) {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                    // Android 13+: Use public API
+                                                    try {
+                                                        val a2dp = proxy as? android.bluetooth.BluetoothA2dp
+                                                        if (a2dp != null) {
+                                                            val batteryLevelMethod = android.bluetooth.BluetoothDevice::class.java.getMethod(
+                                                                "getBatteryLevel",
+                                                                android.bluetooth.BluetoothA2dp::class.java
+                                                            )
+                                                            val level = batteryLevelMethod.invoke(btDev, a2dp) as? Int
+                                                            if (level != null && level >= 0) {
+                                                                batteryLevel = level
+                                                            }
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        // Fallback to reflection for hidden API
+                                                        try {
+                                                            val batteryLevelMethod = btDev.javaClass.getMethod("getBatteryLevel")
+                                                            val level = batteryLevelMethod.invoke(btDev) as? Int
+                                                            if (level != null && level >= 0) {
+                                                                batteryLevel = level
+                                                            }
+                                                        } catch (_: Exception) { }
+                                                    }
+                                                } else {
+                                                    // Android <13: Use reflection for hidden API
+                                                    try {
+                                                        val batteryLevelMethod = btDev.javaClass.getMethod("getBatteryLevel")
+                                                        val level = batteryLevelMethod.invoke(btDev) as? Int
+                                                        if (level != null && level >= 0) {
+                                                            batteryLevel = level
+                                                        }
+                                                    } catch (_: Exception) { }
+                                                }
                                             }
                                         }
                                     } catch (_: SecurityException) { }
@@ -618,10 +652,16 @@ private fun ConnectedDeviceCard() {
                 AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> {
                     deviceName = "Phone speaker"
                     deviceIcon = Icons.Filled.Speaker
+                    // Get phone battery level
+                    val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                    batteryLevel = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 }
                 else -> {
                     deviceName = "This device"
                     deviceIcon = Icons.Filled.PhoneAndroid
+                    // Get phone battery level
+                    val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                    batteryLevel = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 }
             }
         } catch (_: Exception) {
