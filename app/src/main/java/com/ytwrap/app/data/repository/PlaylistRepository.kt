@@ -43,4 +43,13 @@ class PlaylistRepository @Inject constructor(
 
     suspend fun removeTrackFromPlaylist(playlistId: Long, videoId: String) =
         playlistDao.removeTrackFromPlaylist(playlistId, videoId)
+
+    suspend fun reorderTracks(playlistId: Long, videoIds: List<String>) {
+        videoIds.forEachIndexed { index, videoId ->
+            playlistDao.updateTrackPosition(playlistId, videoId, index)
+        }
+    }
+
+    suspend fun getAllPlaylistsWithTracksList(): List<PlaylistWithTracks> =
+        playlistDao.getAllPlaylistsWithTracksList()
 }

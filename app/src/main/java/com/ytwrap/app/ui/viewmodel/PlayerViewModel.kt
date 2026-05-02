@@ -13,6 +13,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.ytwrap.app.data.entity.Track
+import com.ytwrap.app.data.repository.PlaylistRepository
 import com.ytwrap.app.data.repository.TrackRepository
 import com.ytwrap.app.playback.PlaybackService
 import com.ytwrap.app.playback.YouTubeExtractor
@@ -37,13 +38,16 @@ data class PlayerUiState(
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val isLiked: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val queuingTrackName: String? = null,
+    val currentPlaylistId: Long? = null
 )
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val trackRepository: TrackRepository,
+    private val playlistRepository: PlaylistRepository,
     private val youTubeExtractor: YouTubeExtractor
 ) : ViewModel() {
 
@@ -140,7 +144,7 @@ class PlayerViewModel @Inject constructor(
      */
     fun playTrack(track: Track) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isBuffering = true, error = null) }
+            _uiState.update { it.copy(isBuffering = true, error = null, queuingTrackName = track.title) }
 
             // Persist track in DB
             trackRepository.insertTrack(track)
@@ -188,14 +192,16 @@ class PlayerViewModel @Inject constructor(
                     it.copy(
                         currentTrack = track,
                         isLiked = persisted?.isLiked ?: track.isLiked,
-                        isBuffering = false
+                        isBuffering = false,
+                        queuingTrackName = null
                     )
                 }
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
                         isBuffering = false,
-                        error = "Failed to load: ${e.message}"
+                        error = "Failed to load: ${e.message}",
+                        queuingTrackName = null
                     )
                 }
             }
@@ -302,6 +308,55 @@ class PlayerViewModel @Inject constructor(
                         durationMs = 0L
                     )
                 )
+            }
+        }
+    }
+
+    /**
+     * Smart play: find the track in liked songs or playlists.
+     * Pick the list with the fewest songs and play that list on loop
+     * starting from the tapped track. Falls back to single track play.
+     */
+    fun playTrackSmart(track: Track) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBuffering = true, error = null, queuingTrackName = track.title) }
+            trackRepository.insertTrack(track)
+
+            // Collect liked songs
+            val likedTracks = trackRepository.getLikedTracksList()
+            // Collect all playlists with tracks
+            val allPlaylists = playlistRepository.getAllPlaylistsWithTracksList()
+
+            // Build candidate lists that contain this track
+            data class CandidateList(val tracks: List<Track>, val name: String, val playlistId: Long?)
+            val candidates = mutableListOf<CandidateList>()
+
+            if (likedTracks.any { it.videoId == track.videoId }) {
+                candidates.add(CandidateList(likedTracks, "Liked Songs", null))
+            }
+            for (pw in allPlaylists) {
+                if (pw.tracks.any { it.videoId == track.videoId }) {
+                    candidates.add(CandidateList(pw.tracks, pw.playlist.name, pw.playlist.playlistId))
+                }
+            }
+
+            if (candidates.isNotEmpty()) {
+                // Pick the list with fewest songs
+                val best = candidates.minByOrNull { it.tracks.size }!!
+                val index = best.tracks.indexOfFirst { it.videoId == track.videoId }.coerceAtLeast(0)
+                // Play queue and set repeat all
+                _uiState.update { it.copy(queuingTrackName = null, currentPlaylistId = best.playlistId) }
+                playQueue(best.tracks, index)
+                // Set repeat mode to ALL after a short delay to ensure controller is ready
+                viewModelScope.launch {
+                    delay(500)
+                    mediaController?.let { it.repeatMode = Player.REPEAT_MODE_ALL }
+                    _uiState.update { it.copy(repeatMode = Player.REPEAT_MODE_ALL) }
+                }
+            } else {
+                // Not found in any list, play single track
+                _uiState.update { it.copy(queuingTrackName = null, currentPlaylistId = null) }
+                playTrack(track)
             }
         }
     }
