@@ -1,5 +1,7 @@
 package com.ytwrap.app.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -43,8 +45,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -184,28 +188,41 @@ fun NowPlayingSheet(
 ) {
     val track = state.currentTrack ?: return
 
+    // Animated background gradient — cycles through mood colors (like HomeScreen)
+    val headerColors = remember {
+        listOf(
+            Color(0xFF1DB954), // green
+            Color(0xFF8B5CF6), // purple
+            Color(0xFFE67E22), // warm orange
+            Color(0xFF14B8A6), // teal
+            Color(0xFFE84393), // rose
+            Color(0xFF3B82F6), // blue
+        )
+    }
+    var colorIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            colorIndex = (colorIndex + 1) % headerColors.size
+        }
+    }
+    val animatedColor by animateColorAsState(
+        targetValue = headerColors[colorIndex].copy(alpha = 0.35f),
+        animationSpec = tween(durationMillis = 2000, easing = LinearEasing),
+        label = "nowPlayingGradient"
+    )
+
     Box(
         modifier = modifier
             .wrapContentHeight()
-            .background(SpotifyBlack)
-    ) {
-        // Green dispersion glow behind the album art
-        Box(
-            modifier = Modifier
-                .size(300.dp)
-                .offset(y = 60.dp)
-                .align(Alignment.TopCenter)
-                .blur(120.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            SpotifyGreen.copy(alpha = 0.45f),
-                            SpotifyGreenDark.copy(alpha = 0.15f),
-                            Color.Transparent
-                        )
-                    )
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(animatedColor, SpotifyBlack),
+                    startY = 0f,
+                    endY = 600f
                 )
-        )
+            )
+    ) {
 
         Column(
             modifier = Modifier
@@ -320,6 +337,15 @@ fun NowPlayingSheet(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            // Music visualizer above controls
+            if (state.isPlaying) {
+                MusicVisualizer(
+                    modifier = Modifier.fillMaxWidth().height(40.dp),
+                    barCount = 32
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             // Transport controls
             Row(
@@ -455,4 +481,43 @@ private fun formatDuration(ms: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+@Composable
+private fun MusicVisualizer(
+    modifier: Modifier = Modifier,
+    barCount: Int = 32,
+    barColor: Color = SpotifyGreen
+) {
+    val transition = rememberInfiniteTransition(label = "visualizer")
+    
+    // Create animated heights for each bar with different phases
+    val barHeights = List(barCount) { index ->
+        transition.animateFloat(
+            initialValue = 0.2f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(800 + (index * 50), easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "bar_$index"
+        )
+    }
+    
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        barHeights.forEach { heightAnim ->
+            val height by heightAnim
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(32.dp * height)
+                    .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                    .background(barColor)
+            )
+        }
+    }
 }

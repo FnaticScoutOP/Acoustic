@@ -260,7 +260,7 @@ class PlayerViewModel @Inject constructor(
                 }
             }
 
-            _uiState.update { it.copy(isBuffering = false) }
+            _uiState.update { it.copy(isBuffering = false, queuingTrackName = null) }
         }
     }
 
@@ -269,8 +269,11 @@ class PlayerViewModel @Inject constructor(
      * Resolves all tracks and starts from the given index.
      */
     fun playTrackInQueue(track: Track, queue: List<Track>) {
-        val index = queue.indexOfFirst { it.videoId == track.videoId }.coerceAtLeast(0)
-        playQueue(queue, index)
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBuffering = true, error = null, queuingTrackName = track.title) }
+            val index = queue.indexOfFirst { it.videoId == track.videoId }.coerceAtLeast(0)
+            playQueue(queue, index)
+        }
     }
 
     /**

@@ -328,11 +328,20 @@ private fun ReorderableLikedTrackList(
                                 change.consume()
                                 dragOffset += dragAmount.y
                                 val currentIndex = draggedIndex ?: return@detectDragGesturesAfterLongPress
-                                val targetIndex = (currentIndex + (dragOffset / itemHeight.toPx()).roundToInt())
-                                    .coerceIn(0, tracks.size - 1)
-                                if (targetIndex != currentIndex) {
-                                    onMove(currentIndex, targetIndex)
-                                    draggedIndex = targetIndex
+                                val itemHeightPx = itemHeight.toPx()
+                                if (dragOffset >= itemHeightPx) {
+                                    val targetIndex = (currentIndex + 1).coerceIn(0, tracks.size - 1)
+                                    if (targetIndex != currentIndex) {
+                                        onMove(currentIndex, targetIndex)
+                                        draggedIndex = targetIndex
+                                    }
+                                    dragOffset = 0f
+                                } else if (dragOffset <= -itemHeightPx) {
+                                    val targetIndex = (currentIndex - 1).coerceIn(0, tracks.size - 1)
+                                    if (targetIndex != currentIndex) {
+                                        onMove(currentIndex, targetIndex)
+                                        draggedIndex = targetIndex
+                                    }
                                     dragOffset = 0f
                                 }
                             },
