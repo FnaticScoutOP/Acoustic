@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="spotify_black">#FF121212</color>
+    <color name="spotify_green">#FF1DB954</color>
+
+    <style name="Theme.YTWrap" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/spotify_black</item>
+        <item name="android:navigationBarColor">@color/spotify_black</item>
+        <item name="android:windowBackground">@color/spotify_black</item>
+    </style>
+
+    <style name="Theme.YTWrap.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/spotify_black</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.YTWrap</item>
+    </style>
+</resources>

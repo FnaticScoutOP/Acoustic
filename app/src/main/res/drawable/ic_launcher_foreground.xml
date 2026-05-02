@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Subtle green circle behind the icon -->
+    <path
+        android:fillColor="#1DB954"
+        android:fillAlpha="0.15"
+        android:pathData="M54,54m-32,0a32,32 0,1 1,64 0a32,32 0,1 1,-64 0" />
+    <!-- Sound wave bars (left set) -->
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M34,46 L34,62 A2,2 0,0 0,38,62 L38,46 A2,2 0,0 0,34,46z" />
+    <path
+        android:fillColor="#1ED760"
+        android:pathData="M42,38 L42,70 A2,2 0,0 0,46,70 L46,38 A2,2 0,0 0,42,38z" />
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M50,42 L50,66 A2,2 0,0 0,54,66 L54,42 A2,2 0,0 0,50,42z" />
+    <!-- Sound wave bars (right set) -->
+    <path
+        android:fillColor="#1ED760"
+        android:pathData="M58,34 L58,74 A2,2 0,0 0,62,74 L62,34 A2,2 0,0 0,58,34z" />
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M66,40 L66,68 A2,2 0,0 0,70,68 L70,40 A2,2 0,0 0,66,40z" />
+    <path
+        android:fillColor="#1ED760"
+        android:pathData="M74,48 L74,60 A2,2 0,0 0,78,60 L78,48 A2,2 0,0 0,74,48z" />
+</vector>

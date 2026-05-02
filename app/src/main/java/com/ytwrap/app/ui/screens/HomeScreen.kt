@@ -1,0 +1,498 @@
+package com.ytwrap.app.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.ytwrap.app.data.dao.TrackPlayCount
+import com.ytwrap.app.data.entity.Track
+import com.ytwrap.app.ui.components.TrackItem
+import com.ytwrap.app.ui.theme.SpotifyBlack
+import com.ytwrap.app.ui.theme.SpotifyGray
+import com.ytwrap.app.ui.theme.SpotifyGreen
+import com.ytwrap.app.ui.theme.SpotifyTextSecondary
+import com.ytwrap.app.ui.viewmodel.LibraryViewModel
+import com.ytwrap.app.ui.viewmodel.PlayerViewModel
+import com.ytwrap.app.ui.viewmodel.StatsViewModel
+import java.util.Calendar
+
+@Composable
+fun HomeScreen(
+    playerViewModel: PlayerViewModel,
+    libraryViewModel: LibraryViewModel,
+    statsViewModel: StatsViewModel,
+    onLikedSongsTap: () -> Unit,
+    onPlaylistsTap: () -> Unit,
+    onStatsTap: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val playerState by playerViewModel.uiState.collectAsState()
+    val recentlyPlayed by playerViewModel.recentlyPlayed.collectAsState()
+    val heavyRotation by statsViewModel.heavyRotation.collectAsState()
+    val forgottenGems by statsViewModel.forgottenGems.collectAsState()
+    val recentlyAdded by statsViewModel.recentlyAdded.collectAsState()
+    val searchState by libraryViewModel.uiState.collectAsState()
+
+    val greeting = getGreeting()
+    val isSearchActive = searchState.searchQuery.isNotBlank()
+
+    // Animated header gradient — cycles through mood colors
+    val headerColors = remember {
+        listOf(
+            Color(0xFF1DB954), // green
+            Color(0xFF8B5CF6), // purple
+            Color(0xFFE67E22), // warm orange
+            Color(0xFF14B8A6), // teal
+            Color(0xFFE84393), // rose
+            Color(0xFF3B82F6), // blue
+        )
+    }
+    var colorIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            colorIndex = (colorIndex + 1) % headerColors.size
+        }
+    }
+    val animatedColor by animateColorAsState(
+        targetValue = headerColors[colorIndex].copy(alpha = 0.30f),
+        animationSpec = tween(durationMillis = 2000, easing = LinearEasing),
+        label = "headerGradient"
+    )
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SpotifyBlack)
+    ) {
+        // Greeting + Search bar
+        item(key = "header") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(animatedColor, SpotifyBlack),
+                            startY = 0f,
+                            endY = 400f
+                        )
+                    )
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+            ) {
+                Text(
+                    text = greeting,
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                // Inline search field
+                TextField(
+                    value = searchState.searchQuery,
+                    onValueChange = { libraryViewModel.searchYouTube(it) },
+                    placeholder = {
+                        Text("What do you want to listen to?", color = SpotifyTextSecondary, style = MaterialTheme.typography.bodyMedium)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White)
+                    },
+                    trailingIcon = {
+                        if (searchState.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { libraryViewModel.searchYouTube("") }) {
+                                Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = Color.White)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = SpotifyGray,
+                        unfocusedContainerColor = SpotifyGray,
+                        cursorColor = SpotifyGreen,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // If searching, show search results inline
+        if (isSearchActive) {
+            if (searchState.isSearching) {
+                item(key = "searching") {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = SpotifyGreen)
+                    }
+                }
+            } else if (searchState.searchResults.isEmpty()) {
+                item(key = "no_results") {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text("No results found", color = SpotifyTextSecondary, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            } else {
+                items(searchState.searchResults, key = { "sr_${it.videoId}" }) { track ->
+                    TrackItem(
+                        track = track,
+                        onClick = { playerViewModel.playTrack(track) }
+                    )
+                }
+            }
+        } else {
+            // Quick Start — Resume card
+            val lastTrack = playerState.currentTrack ?: recentlyPlayed.firstOrNull()
+            if (lastTrack != null) {
+                item(key = "quickstart") {
+                    SectionTitle("Quick Start")
+                    ResumeCard(
+                        track = lastTrack,
+                        isPlaying = playerState.isPlaying && playerState.currentTrack?.videoId == lastTrack.videoId,
+                        onPlayPause = {
+                            if (playerState.currentTrack?.videoId == lastTrack.videoId) {
+                                playerViewModel.togglePlayPause()
+                            } else {
+                                playerViewModel.playTrack(lastTrack)
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+
+            // Category Chips
+            item(key = "browse") {
+                SectionTitle("Browse")
+                Spacer(modifier = Modifier.height(8.dp))
+                CategoryChipsGrid(
+                    onLikedSongsTap = onLikedSongsTap,
+                    onPlaylistsTap = onPlaylistsTap,
+                    onStatsTap = onStatsTap
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            // Recently Played (in-memory)
+            if (recentlyPlayed.isNotEmpty()) {
+                item(key = "recently_played") {
+                    SectionTitle("Recently Played")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TrackCardRow(
+                        tracks = recentlyPlayed.take(15),
+                        onTrackClick = { playerViewModel.playTrack(it) }
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+
+            // Heavy Rotation (last 7 days)
+            if (heavyRotation.isNotEmpty()) {
+                item(key = "heavy_rotation") {
+                    SectionTitle("Heavy Rotation")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PlayCountCardRow(
+                        items = heavyRotation,
+                        onItemClick = { item -> playerViewModel.playTrackFromStats(item) }
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+
+            // Recently Added
+            if (recentlyAdded.isNotEmpty()) {
+                item(key = "recently_added") {
+                    SectionTitle("Recently Added")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PlayCountCardRow(
+                        items = recentlyAdded,
+                        onItemClick = { item -> playerViewModel.playTrackFromStats(item) }
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+
+            // Forgotten Gems
+            if (forgottenGems.isNotEmpty()) {
+                item(key = "forgotten_gems") {
+                    SectionTitle("Forgotten Gems")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PlayCountCardRow(
+                        items = forgottenGems,
+                        onItemClick = { item -> playerViewModel.playTrackFromStats(item) }
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+
+            // Empty state
+            if (recentlyPlayed.isEmpty() && heavyRotation.isEmpty() && lastTrack == null) {
+                item(key = "empty") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = SpotifyGreen.copy(alpha = 0.4f), modifier = Modifier.size(56.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Start playing music!", color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Search for songs to get started", color = SpotifyTextSecondary, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+private fun getGreeting(): String {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    return when {
+        hour < 12 -> "Good Morning"
+        hour < 17 -> "Good Afternoon"
+        hour < 21 -> "Good Evening"
+        else -> "Good Night"
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+        color = Color.White,
+        modifier = Modifier.padding(horizontal = 16.dp)
+    )
+}
+
+@Composable
+private fun ResumeCard(track: Track, isPlaying: Boolean, onPlayPause: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SpotifyGray)
+            .clickable(onClick = onPlayPause)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = track.thumbnailUrl,
+            contentDescription = track.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = track.artist,
+                style = MaterialTheme.typography.bodySmall,
+                color = SpotifyTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(SpotifyGreen),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                tint = Color.Black,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryChipsGrid(
+    onLikedSongsTap: () -> Unit,
+    onPlaylistsTap: () -> Unit,
+    onStatsTap: () -> Unit
+) {
+    val chips = listOf(
+        Triple(Icons.Filled.Favorite as ImageVector, "Liked Songs", onLikedSongsTap),
+        Triple(Icons.AutoMirrored.Filled.QueueMusic as ImageVector, "Playlists", onPlaylistsTap),
+        Triple(Icons.Filled.Star as ImageVector, "Top Songs", onStatsTap),
+        Triple(Icons.Filled.MusicNote as ImageVector, "Browse", onStatsTap)
+    )
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        chips.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                row.forEach { (icon, label, action) ->
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SpotifyGray)
+                            .clickable(onClick = action)
+                            .padding(horizontal = 12.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(icon, contentDescription = null, tint = SpotifyGreen, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(label, color = Color.White, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+                    }
+                }
+                if (row.size < 2) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun TrackCardRow(tracks: List<Track>, onTrackClick: (Track) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(tracks, key = { it.videoId }) { track ->
+            Column(
+                modifier = Modifier
+                    .width(130.dp)
+                    .clickable { onTrackClick(track) }
+            ) {
+                AsyncImage(
+                    model = track.thumbnailUrl,
+                    contentDescription = track.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(130.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SpotifyTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayCountCardRow(items: List<TrackPlayCount>, onItemClick: (TrackPlayCount) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(items, key = { it.videoId }) { item ->
+            Column(
+                modifier = Modifier
+                    .width(130.dp)
+                    .clickable { onItemClick(item) }
+            ) {
+                AsyncImage(
+                    model = item.thumbnailUrl,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(130.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${item.artist} \u2022 ${item.playCount}\u00d7",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SpotifyTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
