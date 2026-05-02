@@ -22,13 +22,14 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,6 +53,7 @@ import com.ytwrap.app.ui.theme.SpotifyTextSecondary
 import com.ytwrap.app.ui.viewmodel.LibraryViewModel
 import com.ytwrap.app.ui.viewmodel.PlayerViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistDetailScreen(
     playlistId: Long,
@@ -204,65 +206,47 @@ fun PlaylistDetailScreen(
         }
     }
 
-    // Track options dialog
+    // Track options bottom sheet
     if (trackForOptions != null) {
         val track = trackForOptions!!
-        TrackOptionsDialog(
-            track = track,
-            onRemoveFromPlaylist = {
-                viewModel.removeTrackFromPlaylist(playlistId, track.videoId)
-                playerViewModel.removeFromQueue(track.videoId)
-                trackForOptions = null
-            },
-            onDismiss = { trackForOptions = null }
-        )
-    }
-}
-
-@Composable
-private fun TrackOptionsDialog(
-    track: Track,
-    onRemoveFromPlaylist: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = Color.White,
-                maxLines = 2
-            )
-        },
-        text = {
+        ModalBottomSheet(
+            onDismissRequest = { trackForOptions = null },
+            containerColor = Color(0xFF282828),
+            tonalElevation = 0.dp
+        ) {
             Column {
+                // Track title
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    maxLines = 2,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                )
+                HorizontalDivider(color = SpotifyGray)
+
+                // Remove from playlist option
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onRemoveFromPlaylist() }
-                        .padding(vertical = 14.dp),
+                        .clickable {
+                            viewModel.removeTrackFromPlaylist(playlistId, track.videoId)
+                            playerViewModel.removeFromQueue(track.videoId)
+                            trackForOptions = null
+                        }
+                        .padding(vertical = 16.dp, horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Filled.RemoveCircleOutline,
                         contentDescription = null,
                         tint = Color(0xFFE57373),
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(24.dp)
                     )
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Text("Remove from playlist", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("Remove from playlist", color = Color.White, style = MaterialTheme.typography.bodyLarge)
                 }
-                HorizontalDivider(color = SpotifyGray)
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = SpotifyTextSecondary)
-            }
-        },
-        containerColor = Color(0xFF282828),
-        titleContentColor = Color.White
-    )
+        }
+    }
 }

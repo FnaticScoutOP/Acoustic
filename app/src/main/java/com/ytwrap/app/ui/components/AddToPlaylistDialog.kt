@@ -14,8 +14,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,6 +33,7 @@ import com.ytwrap.app.ui.theme.SpotifyGray
 import com.ytwrap.app.ui.theme.SpotifyLikeColor
 import com.ytwrap.app.ui.theme.SpotifyTextSecondary
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddToPlaylistDialog(
     playlists: List<Playlist>,
@@ -40,83 +42,76 @@ fun AddToPlaylistDialog(
     onAddToPlaylist: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
+        containerColor = Color(0xFF282828),
+        tonalElevation = 0.dp
+    ) {
+        Column {
+            // Title
             Text(
                 "Add to...",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
             )
-        },
-        text = {
-            Column {
-                // Liked Songs option
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onToggleLike()
-                            onDismiss()
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Favorite,
-                        contentDescription = null,
-                        tint = if (isLiked) SpotifyLikeColor else SpotifyTextSecondary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Text(
-                        text = if (isLiked) "Remove from Liked Songs" else "Liked Songs",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = Color.White
-                    )
-                }
 
-                if (playlists.isNotEmpty()) {
-                    HorizontalDivider(color = SpotifyGray)
-                    Spacer(modifier = Modifier.height(4.dp))
+            // Liked Songs option
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onToggleLike()
+                        onDismiss()
+                    }
+                    .padding(vertical = 16.dp, horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Favorite,
+                    contentDescription = null,
+                    tint = if (isLiked) SpotifyLikeColor else SpotifyTextSecondary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = if (isLiked) "Remove from Liked Songs" else "Liked Songs",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White
+                )
+            }
 
-                    LazyColumn {
-                        items(playlists, key = { it.playlistId }) { playlist ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onAddToPlaylist(playlist.playlistId)
-                                        onDismiss()
-                                    }
-                                    .padding(vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                                    contentDescription = null,
-                                    tint = SpotifyGreen,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Text(
-                                    text = playlist.name,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                    color = Color.White
-                                )
-                            }
+            if (playlists.isNotEmpty()) {
+                HorizontalDivider(color = SpotifyGray)
+
+                LazyColumn {
+                    items(playlists, key = { it.playlistId }) { playlist ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onAddToPlaylist(playlist.playlistId)
+                                    onDismiss()
+                                }
+                                .padding(vertical = 16.dp, horizontal = 24.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                contentDescription = null,
+                                tint = SpotifyGreen,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = playlist.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.White
+                            )
                         }
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = SpotifyTextSecondary)
-            }
-        },
-        containerColor = Color(0xFF282828),
-        titleContentColor = Color.White
-    )
+        }
+    }
 }

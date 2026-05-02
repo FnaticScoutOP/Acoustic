@@ -123,7 +123,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 }
+                        onClick = { selectedTab = 0; openPlaylistId = null }
                     )
                     NavigationBarItem(
                         icon = {
@@ -140,7 +140,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 }
+                        onClick = { selectedTab = 1; openPlaylistId = null }
                     )
                     NavigationBarItem(
                         icon = {
@@ -157,7 +157,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 }
+                        onClick = { selectedTab = 2; openPlaylistId = null }
                     )
                     NavigationBarItem(
                         icon = {
@@ -174,7 +174,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 }
+                        onClick = { selectedTab = 3; openPlaylistId = null }
                     )
                 }
             }
