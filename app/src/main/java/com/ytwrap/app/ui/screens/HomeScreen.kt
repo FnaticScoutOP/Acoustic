@@ -1,5 +1,11 @@
 package com.ytwrap.app.ui.screens
 
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,13 +26,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Battery0Bar
+import androidx.compose.material.icons.filled.Battery2Bar
+import androidx.compose.material.icons.filled.Battery4Bar
+import androidx.compose.material.icons.filled.Battery6Bar
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -43,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,12 +68,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.ytwrap.app.data.dao.TrackPlayCount
 import com.ytwrap.app.data.entity.Track
+import com.ytwrap.app.ui.components.NowPlayingIndicator
 import com.ytwrap.app.ui.components.TrackItem
 import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyGray
@@ -76,6 +94,8 @@ fun HomeScreen(
     onLikedSongsTap: () -> Unit,
     onPlaylistsTap: () -> Unit,
     onStatsTap: () -> Unit,
+    onBrowseTap: () -> Unit = {},
+    onShowNowPlaying: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val playerState by playerViewModel.uiState.collectAsState()
@@ -188,7 +208,12 @@ fun HomeScreen(
                 items(searchState.searchResults, key = { "sr_${it.videoId}" }) { track ->
                     TrackItem(
                         track = track,
-                        onClick = { playerViewModel.playTrack(track) }
+                        onClick = {
+                            if (track.videoId == playerState.currentTrack?.videoId) onShowNowPlaying()
+                            else playerViewModel.playTrackSmart(track)
+                        },
+                        onLikeToggle = { libraryViewModel.toggleLike(track) },
+                        isCurrentlyPlaying = track.videoId == playerState.currentTrack?.videoId
                     )
                 }
             }
@@ -213,6 +238,12 @@ fun HomeScreen(
                 }
             }
 
+            // Connected device info
+            item(key = "connected_device") {
+                ConnectedDeviceCard()
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
             // Category Chips
             item(key = "browse") {
                 SectionTitle("Browse")
@@ -220,7 +251,8 @@ fun HomeScreen(
                 CategoryChipsGrid(
                     onLikedSongsTap = onLikedSongsTap,
                     onPlaylistsTap = onPlaylistsTap,
-                    onStatsTap = onStatsTap
+                    onStatsTap = onStatsTap,
+                    onBrowseTap = onBrowseTap
                 )
                 Spacer(modifier = Modifier.height(20.dp))
             }
@@ -232,7 +264,11 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     TrackCardRow(
                         tracks = recentlyPlayed.take(15),
-                        onTrackClick = { playerViewModel.playTrack(it) }
+                        onTrackClick = {
+                            if (it.videoId == playerState.currentTrack?.videoId) onShowNowPlaying()
+                            else playerViewModel.playTrackSmart(it)
+                        },
+                        currentTrackId = playerState.currentTrack?.videoId
                     )
                     Spacer(modifier = Modifier.height(20.dp))
                 }
@@ -379,13 +415,14 @@ private fun ResumeCard(track: Track, isPlaying: Boolean, onPlayPause: () -> Unit
 private fun CategoryChipsGrid(
     onLikedSongsTap: () -> Unit,
     onPlaylistsTap: () -> Unit,
-    onStatsTap: () -> Unit
+    onStatsTap: () -> Unit,
+    onBrowseTap: () -> Unit = {}
 ) {
     val chips = listOf(
         Triple(Icons.Filled.Favorite as ImageVector, "Liked Songs", onLikedSongsTap),
         Triple(Icons.AutoMirrored.Filled.QueueMusic as ImageVector, "Playlists", onPlaylistsTap),
         Triple(Icons.Filled.Star as ImageVector, "Top Songs", onStatsTap),
-        Triple(Icons.Filled.MusicNote as ImageVector, "Browse", onStatsTap)
+        Triple(Icons.Filled.MusicNote as ImageVector, "Browse", onBrowseTap)
     )
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         chips.chunked(2).forEach { row ->
@@ -418,30 +455,52 @@ private fun CategoryChipsGrid(
 }
 
 @Composable
-private fun TrackCardRow(tracks: List<Track>, onTrackClick: (Track) -> Unit) {
+private fun TrackCardRow(
+    tracks: List<Track>,
+    onTrackClick: (Track) -> Unit,
+    currentTrackId: String? = null
+) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(tracks, key = { it.videoId }) { track ->
+            val isPlaying = track.videoId == currentTrackId
             Column(
                 modifier = Modifier
                     .width(130.dp)
                     .clickable { onTrackClick(track) }
             ) {
-                AsyncImage(
-                    model = track.thumbnailUrl,
-                    contentDescription = track.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(130.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = track.thumbnailUrl,
+                        contentDescription = track.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(130.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    if (isPlaying) {
+                        Box(
+                            modifier = Modifier
+                                .size(130.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.55f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            NowPlayingIndicator(
+                                barWidth = 5.dp,
+                                maxHeight = 28.dp,
+                                gap = 3.dp
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = Color.White,
+                    color = if (isPlaying) SpotifyGreen else Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -493,6 +552,133 @@ private fun PlayCountCardRow(items: List<TrackPlayCount>, onItemClick: (TrackPla
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ConnectedDeviceCard() {
+    val context = LocalContext.current
+    var deviceName by remember { mutableStateOf("This device") }
+    var deviceIcon by remember { mutableStateOf<ImageVector>(Icons.Filled.PhoneAndroid) }
+    var batteryLevel by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(Unit) {
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+
+            // Find the active audio output device (prefer Bluetooth > wired > speaker)
+            val activeDevice = devices.firstOrNull {
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            } ?: devices.firstOrNull {
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+            } ?: devices.firstOrNull {
+                it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            }
+
+            when (activeDevice?.type) {
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
+                    deviceName = activeDevice.productName?.toString()?.ifBlank { "Bluetooth device" } ?: "Bluetooth device"
+                    deviceIcon = Icons.Filled.Bluetooth
+
+                    // Try to get battery from BluetoothManager
+                    try {
+                        val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                        val adapter = btManager?.adapter
+                        if (adapter != null) {
+                            val connectedDevices = adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                                    try {
+                                        val btDevices = proxy.connectedDevices
+                                        for (btDev in btDevices) {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                // Battery level via hidden API not accessible without reflection
+                                                // Use product name match instead
+                                            }
+                                        }
+                                    } catch (_: SecurityException) { }
+                                    adapter.closeProfileProxy(profile, proxy)
+                                }
+                                override fun onServiceDisconnected(profile: Int) {}
+                            }, BluetoothProfile.A2DP)
+                        }
+                    } catch (_: Exception) { }
+                }
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_USB_HEADSET -> {
+                    deviceName = activeDevice.productName?.toString()?.ifBlank { "Wired headphones" } ?: "Wired headphones"
+                    deviceIcon = Icons.Filled.Headphones
+                }
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> {
+                    deviceName = "Phone speaker"
+                    deviceIcon = Icons.Filled.Speaker
+                }
+                else -> {
+                    deviceName = "This device"
+                    deviceIcon = Icons.Filled.PhoneAndroid
+                }
+            }
+        } catch (_: Exception) {
+            deviceName = "This device"
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .background(SpotifyGray.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = deviceIcon,
+            contentDescription = "Device",
+            tint = SpotifyGreen,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Listening on",
+                style = MaterialTheme.typography.labelSmall,
+                color = SpotifyTextSecondary
+            )
+            Text(
+                text = deviceName,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (batteryLevel != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            val batIcon = when {
+                batteryLevel!! >= 90 -> Icons.Filled.BatteryFull
+                batteryLevel!! >= 60 -> Icons.Filled.Battery6Bar
+                batteryLevel!! >= 40 -> Icons.Filled.Battery4Bar
+                batteryLevel!! >= 20 -> Icons.Filled.Battery2Bar
+                else -> Icons.Filled.Battery0Bar
+            }
+            Icon(
+                imageVector = batIcon,
+                contentDescription = "Battery",
+                tint = if (batteryLevel!! <= 20) Color(0xFFE57373) else SpotifyGreen,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "${batteryLevel}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = SpotifyTextSecondary
+            )
         }
     }
 }

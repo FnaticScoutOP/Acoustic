@@ -1,6 +1,8 @@
 package com.ytwrap.app.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.ytwrap.app.data.entity.Track
+import com.ytwrap.app.ui.theme.SpotifyGreen
 import com.ytwrap.app.ui.theme.SpotifyLikeColor
 import com.ytwrap.app.ui.theme.SpotifyTextSecondary
 
@@ -37,23 +40,47 @@ fun TrackItem(
     onClick: () -> Unit,
     onLikeToggle: (() -> Unit)? = null,
     onMore: (() -> Unit)? = null,
+    isCurrentlyPlaying: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (isCurrentlyPlaying)
+                    Modifier.background(Color.White.copy(alpha = 0.08f))
+                else Modifier
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = track.thumbnailUrl,
-            contentDescription = track.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(8.dp))
-        )
+        // Thumbnail with optional equalizer overlay
+        Box(contentAlignment = Alignment.Center) {
+            AsyncImage(
+                model = track.thumbnailUrl,
+                contentDescription = track.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            )
+            if (isCurrentlyPlaying) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    NowPlayingIndicator(
+                        barWidth = 3.dp,
+                        maxHeight = 18.dp,
+                        gap = 2.dp
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.width(14.dp))
 
@@ -63,7 +90,7 @@ fun TrackItem(
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = Color.White
+                color = if (isCurrentlyPlaying) SpotifyGreen else Color.White
             )
             Text(
                 text = track.artist,

@@ -41,4 +41,10 @@ interface TrackDao {
 
     @Query("SELECT * FROM tracks WHERE title LIKE '%' || :query || '%' OR artist LIKE '%' || :query || '%'")
     fun searchTracks(query: String): Flow<List<Track>>
+
+    @Query("UPDATE tracks SET added_at = :addedAt WHERE video_id = :videoId")
+    suspend fun updateAddedAt(videoId: String, addedAt: Long)
+
+    @Query("SELECT * FROM tracks WHERE is_liked = 1 ORDER BY added_at DESC")
+    suspend fun getLikedTracksList(): List<Track>
 }

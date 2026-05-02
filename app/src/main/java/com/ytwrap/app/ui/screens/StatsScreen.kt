@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ytwrap.app.data.dao.HourlyListening
 import com.ytwrap.app.data.dao.TrackPlayCount
+import com.ytwrap.app.ui.theme.AnimatedGradientBackground
 import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyGray
 import com.ytwrap.app.ui.theme.SpotifyGreen
@@ -54,10 +55,10 @@ fun StatsScreen(
     val mostPlayed by viewModel.mostPlayedTrack.collectAsState()
     val topTracks by viewModel.topTracks.collectAsState()
 
+    AnimatedGradientBackground(modifier = modifier) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(SpotifyBlack)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
@@ -118,6 +119,7 @@ fun StatsScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
     }
 }
 

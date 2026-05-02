@@ -1,7 +1,11 @@
 package com.ytwrap.app.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,15 +13,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Share
@@ -36,22 +44,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import com.ytwrap.app.data.entity.Track
+import com.ytwrap.app.ui.components.NowPlayingIndicator
 import com.ytwrap.app.ui.components.TrackItem
+import com.ytwrap.app.ui.theme.AnimatedGradientBackground
 import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyGray
 import com.ytwrap.app.ui.theme.SpotifyGreen
 import com.ytwrap.app.ui.theme.SpotifyTextSecondary
 import com.ytwrap.app.ui.viewmodel.LibraryViewModel
 import com.ytwrap.app.ui.viewmodel.PlayerViewModel
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +81,9 @@ fun PlaylistDetailScreen(
     onTrackClick: (Track) -> Unit,
     onPlayAll: (List<Track>) -> Unit,
     onBack: () -> Unit,
+    currentTrackId: String? = null,
+    onShowNowPlaying: () -> Unit = {},
+    isPlaylistPlaying: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val playlistsWithTracks by viewModel.playlistsWithTracks.collectAsState()
@@ -69,11 +91,13 @@ fun PlaylistDetailScreen(
 
     // Track options dialog state
     var trackForOptions by remember { mutableStateOf<Track?>(null) }
+    var isReordering by remember { mutableStateOf(false) }
+    val reorderableTracks = remember { mutableStateListOf<Track>() }
 
+    AnimatedGradientBackground(modifier = modifier) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(SpotifyBlack)
     ) {
         // Header
         Row(
@@ -130,6 +154,21 @@ fun PlaylistDetailScreen(
                             tint = SpotifyGreen,
                             modifier = Modifier.size(32.dp)
                         )
+                        if (isPlaylistPlaying) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.Black.copy(alpha = 0.55f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                NowPlayingIndicator(
+                                    barWidth = 4.dp,
+                                    maxHeight = 20.dp,
+                                    gap = 3.dp
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -176,7 +215,38 @@ fun PlaylistDetailScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Reorder toggle
+            if (tracks.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End
+                ) {
+                    TextButton(onClick = {
+                        if (isReordering) {
+                            // Save new order
+                            viewModel.reorderTracksInPlaylist(
+                                playlistId,
+                                reorderableTracks.map { it.videoId }
+                            )
+                        } else {
+                            reorderableTracks.clear()
+                            reorderableTracks.addAll(tracks)
+                        }
+                        isReordering = !isReordering
+                    }) {
+                        Text(
+                            text = if (isReordering) "Done" else "Reorder",
+                            color = SpotifyGreen
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Track list
             if (tracks.isEmpty()) {
@@ -192,18 +262,31 @@ fun PlaylistDetailScreen(
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
+            } else if (isReordering) {
+                ReorderableTrackList(
+                    tracks = reorderableTracks,
+                    onMove = { from, to ->
+                        val item = reorderableTracks.removeAt(from)
+                        reorderableTracks.add(to, item)
+                    }
+                )
             } else {
                 LazyColumn {
                     items(tracks, key = { it.videoId }) { track ->
                         TrackItem(
                             track = track,
-                            onClick = { onTrackClick(track) },
-                            onMore = { trackForOptions = track }
+                            onClick = {
+                                if (track.videoId == currentTrackId) onShowNowPlaying()
+                                else onTrackClick(track)
+                            },
+                            onMore = { trackForOptions = track },
+                            isCurrentlyPlaying = track.videoId == currentTrackId
                         )
                     }
                 }
             }
         }
+    }
     }
 
     // Track options bottom sheet
@@ -245,6 +328,110 @@ fun PlaylistDetailScreen(
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     Text("Remove from playlist", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReorderableTrackList(
+    tracks: MutableList<Track>,
+    onMove: (Int, Int) -> Unit
+) {
+    var draggedIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffset by remember { mutableStateOf(0f) }
+    val itemHeight = 72.dp
+
+    // Shake animation on enter
+    val shakeAngle = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        // Quick jerk: rotate back and forth a few times
+        repeat(3) {
+            shakeAngle.animateTo(2.5f, animationSpec = tween(50))
+            shakeAngle.animateTo(-2.5f, animationSpec = tween(50))
+        }
+        shakeAngle.animateTo(0f, animationSpec = tween(50))
+    }
+
+    LazyColumn {
+        itemsIndexed(tracks, key = { _, track -> track.videoId }) { index, track ->
+            val elevation by animateDpAsState(
+                if (draggedIndex == index) 8.dp else 0.dp,
+                label = "elevation"
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { rotationZ = if (draggedIndex == null) shakeAngle.value else 0f }
+                    .shadow(elevation)
+                    .background(if (draggedIndex == index) SpotifyGray else Color.Transparent)
+                    .pointerInput(tracks.size) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                draggedIndex = index
+                                dragOffset = 0f
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffset += dragAmount.y
+                                val targetIndex = (index + (dragOffset / itemHeight.toPx()).roundToInt())
+                                    .coerceIn(0, tracks.size - 1)
+                                if (targetIndex != index && draggedIndex != null) {
+                                    onMove(index, targetIndex)
+                                    draggedIndex = targetIndex
+                                    dragOffset = 0f
+                                }
+                            },
+                            onDragEnd = {
+                                draggedIndex = null
+                                dragOffset = 0f
+                            },
+                            onDragCancel = {
+                                draggedIndex = null
+                                dragOffset = 0f
+                            }
+                        )
+                    }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DragHandle,
+                    contentDescription = "Drag to reorder",
+                    tint = SpotifyTextSecondary,
+                    modifier = Modifier.size(24.dp)
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                coil.compose.AsyncImage(
+                    model = track.thumbnailUrl,
+                    contentDescription = track.title,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = track.title,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        color = Color.White
+                    )
+                    Text(
+                        text = track.artist,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        color = SpotifyTextSecondary
+                    )
                 }
             }
         }

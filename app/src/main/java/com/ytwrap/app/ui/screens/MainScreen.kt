@@ -33,6 +33,7 @@ import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.ui.components.AddToPlaylistDialog
 import com.ytwrap.app.ui.components.MiniPlayer
 import com.ytwrap.app.ui.components.NowPlayingSheet
+import com.ytwrap.app.ui.components.QueuingPopup
 import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyDarkGray
 import com.ytwrap.app.ui.theme.SpotifyGreen
@@ -57,6 +58,9 @@ fun MainScreen(
 
     // Playlist detail navigation
     var openPlaylistId by remember { mutableStateOf<Long?>(null) }
+
+    // Browse screen navigation
+    var showBrowse by remember { mutableStateOf(false) }
 
     // Library tab initial sub-tab (0=Liked, 1=Playlists)
     var libraryInitialTab by remember { mutableIntStateOf(0) }
@@ -92,6 +96,11 @@ fun MainScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Column {
+                // Queuing popup above the mini player
+                if (playerState.queuingTrackName != null) {
+                    QueuingPopup(trackName = playerState.queuingTrackName!!)
+                }
+
                 // Mini player above the nav bar
                 if (playerState.currentTrack != null) {
                     MiniPlayer(
@@ -185,14 +194,24 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (openPlaylistId != null) {
+            if (showBrowse) {
+        BrowseScreen(
+            libraryViewModel = libraryViewModel,
+            playerViewModel = playerViewModel,
+            onBack = { showBrowse = false },
+            onShowNowPlaying = { showNowPlaying = true }
+        )
+    } else if (openPlaylistId != null) {
                 PlaylistDetailScreen(
                     playlistId = openPlaylistId!!,
                     viewModel = libraryViewModel,
                     playerViewModel = playerViewModel,
                     onTrackClick = { track -> playerViewModel.playTrack(track) },
                     onPlayAll = { tracks -> playerViewModel.playQueue(tracks) },
-                    onBack = { openPlaylistId = null }
+                    onBack = { openPlaylistId = null },
+                    currentTrackId = playerState.currentTrack?.videoId,
+                    onShowNowPlaying = { showNowPlaying = true },
+                    isPlaylistPlaying = playerState.currentPlaylistId == openPlaylistId
                 )
             } else {
                 when (selectedTab) {
@@ -208,11 +227,13 @@ fun MainScreen(
                             libraryInitialTab = 1
                             selectedTab = 2
                         },
-                        onStatsTap = { selectedTab = 3 }
+                        onStatsTap = { selectedTab = 3 },
+                        onBrowseTap = { showBrowse = true },
+                        onShowNowPlaying = { showNowPlaying = true }
                     )
                     1 -> SearchScreen(
                         viewModel = libraryViewModel,
-                        onTrackClick = { track -> playerViewModel.playTrack(track) },
+                        onTrackClick = { track -> playerViewModel.playTrackSmart(track) },
                         onLikeToggle = { track -> trackForPlaylistPicker = track }
                     )
                     2 -> LibraryScreen(
@@ -223,7 +244,10 @@ fun MainScreen(
                         },
                         onPlaylistClick = { playlistId -> openPlaylistId = playlistId },
                         onLikeToggle = { track -> trackForPlaylistPicker = track },
-                        initialTab = libraryInitialTab
+                        initialTab = libraryInitialTab,
+                        currentTrackId = playerState.currentTrack?.videoId,
+                        onShowNowPlaying = { showNowPlaying = true },
+                        currentPlaylistId = playerState.currentPlaylistId
                     )
                     3 -> StatsScreen(viewModel = statsViewModel)
                 }

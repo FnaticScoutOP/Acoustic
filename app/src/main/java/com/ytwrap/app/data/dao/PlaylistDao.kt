@@ -49,4 +49,14 @@ interface PlaylistDao {
 
     @Query("SELECT COUNT(*) FROM playlist_track_cross_ref WHERE playlist_id = :playlistId")
     suspend fun getTrackCountForPlaylist(playlistId: Long): Int
+
+    @Query("UPDATE playlist_track_cross_ref SET position = :position WHERE playlist_id = :playlistId AND video_id = :videoId")
+    suspend fun updateTrackPosition(playlistId: Long, videoId: String, position: Int)
+
+    @Query("SELECT video_id FROM playlist_track_cross_ref WHERE playlist_id = :playlistId ORDER BY position ASC")
+    suspend fun getTrackIdsForPlaylist(playlistId: Long): List<String>
+
+    @Transaction
+    @Query("SELECT * FROM playlists ORDER BY updated_at DESC")
+    suspend fun getAllPlaylistsWithTracksList(): List<PlaylistWithTracks>
 }

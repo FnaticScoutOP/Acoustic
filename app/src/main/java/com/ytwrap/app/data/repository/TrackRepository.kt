@@ -32,4 +32,8 @@ class TrackRepository @Inject constructor(
     suspend fun setLiked(videoId: String, isLiked: Boolean) = trackDao.setLiked(videoId, isLiked)
 
     suspend fun deleteTrack(track: Track) = trackDao.deleteTrack(track)
+
+    suspend fun updateAddedAt(videoId: String, addedAt: Long) = trackDao.updateAddedAt(videoId, addedAt)
+
+    suspend fun getLikedTracksList(): List<Track> = trackDao.getLikedTracksList()
 }

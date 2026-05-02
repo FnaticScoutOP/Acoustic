@@ -18,14 +18,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -46,7 +49,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ytwrap.app.data.entity.Playlist
 import com.ytwrap.app.data.entity.Track
+import com.ytwrap.app.ui.components.NowPlayingIndicator
 import com.ytwrap.app.ui.components.TrackItem
+import com.ytwrap.app.ui.theme.AnimatedGradientBackground
 import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyDarkGray
 import com.ytwrap.app.ui.theme.SpotifyGray
@@ -55,6 +60,7 @@ import com.ytwrap.app.ui.theme.SpotifyLikeColor
 import com.ytwrap.app.ui.theme.SpotifyTextSecondary
 import com.ytwrap.app.ui.viewmodel.LibraryViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
@@ -63,17 +69,21 @@ fun LibraryScreen(
     onPlaylistClick: (Long) -> Unit,
     onLikeToggle: (Track) -> Unit = { viewModel.toggleLike(it) },
     initialTab: Int = 0,
+    currentTrackId: String? = null,
+    onShowNowPlaying: () -> Unit = {},
+    currentPlaylistId: Long? = null,
     modifier: Modifier = Modifier
 ) {
     val likedTracks by viewModel.likedTracks.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
     var selectedTab by remember { mutableIntStateOf(initialTab) }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var playlistToEdit by remember { mutableStateOf<Playlist?>(null) }
 
+    AnimatedGradientBackground(modifier = modifier) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(SpotifyBlack)
     ) {
         // Header
         Row(
@@ -103,7 +113,7 @@ fun LibraryScreen(
         // Tabs
         TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = SpotifyBlack,
+            containerColor = Color.Transparent,
             contentColor = SpotifyGreen
         ) {
             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
@@ -126,24 +136,49 @@ fun LibraryScreen(
         when (selectedTab) {
             0 -> LikedTracksTab(
                 tracks = likedTracks,
-                onTrackClick = { track -> onTrackClickInQueue(track, likedTracks) },
-                onLikeToggle = onLikeToggle
+                onTrackClick = { track ->
+                    if (track.videoId == currentTrackId) onShowNowPlaying()
+                    else onTrackClickInQueue(track, likedTracks)
+                },
+                onLikeToggle = onLikeToggle,
+                currentTrackId = currentTrackId
             )
             1 -> PlaylistsTab(
                 playlists = playlists,
                 onPlaylistClick = onPlaylistClick,
-                onDeletePlaylist = { viewModel.deletePlaylist(it) }
+                onDeletePlaylist = { viewModel.deletePlaylist(it) },
+                onEditPlaylist = { playlistToEdit = it },
+                currentPlaylistId = currentPlaylistId
             )
         }
     }
+    }
 
-    // Create Playlist Dialog
+    // Create Playlist Bottom Sheet
     if (showCreateDialog) {
-        CreatePlaylistDialog(
+        PlaylistBottomSheet(
+            title = "Create Playlist",
+            initialName = "",
+            initialDescription = "",
             onDismiss = { showCreateDialog = false },
-            onCreate = { name, desc ->
+            onConfirm = { name, desc ->
                 viewModel.createPlaylist(name, desc)
                 showCreateDialog = false
+            }
+        )
+    }
+
+    // Edit Playlist Bottom Sheet
+    if (playlistToEdit != null) {
+        val pl = playlistToEdit!!
+        PlaylistBottomSheet(
+            title = "Edit Playlist",
+            initialName = pl.name,
+            initialDescription = pl.description,
+            onDismiss = { playlistToEdit = null },
+            onConfirm = { name, desc ->
+                viewModel.updatePlaylist(pl.copy(name = name, description = desc))
+                playlistToEdit = null
             }
         )
     }
@@ -153,7 +188,8 @@ fun LibraryScreen(
 private fun LikedTracksTab(
     tracks: List<Track>,
     onTrackClick: (Track) -> Unit,
-    onLikeToggle: (Track) -> Unit
+    onLikeToggle: (Track) -> Unit,
+    currentTrackId: String? = null
 ) {
     if (tracks.isEmpty()) {
         Box(
@@ -181,7 +217,8 @@ private fun LikedTracksTab(
                 TrackItem(
                     track = track,
                     onClick = { onTrackClick(track) },
-                    onLikeToggle = { onLikeToggle(track) }
+                    onLikeToggle = { onLikeToggle(track) },
+                    isCurrentlyPlaying = track.videoId == currentTrackId
                 )
             }
         }
@@ -192,7 +229,9 @@ private fun LikedTracksTab(
 private fun PlaylistsTab(
     playlists: List<Playlist>,
     onPlaylistClick: (Long) -> Unit,
-    onDeletePlaylist: (Playlist) -> Unit
+    onDeletePlaylist: (Playlist) -> Unit,
+    onEditPlaylist: (Playlist) -> Unit = {},
+    currentPlaylistId: Long? = null
 ) {
     if (playlists.isEmpty()) {
         Box(
@@ -217,9 +256,14 @@ private fun PlaylistsTab(
     } else {
         LazyColumn {
             items(playlists, key = { it.playlistId }) { playlist ->
+                val isPlaying = playlist.playlistId == currentPlaylistId
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (isPlaying) Modifier.background(Color.White.copy(alpha = 0.08f))
+                            else Modifier
+                        )
                         .clickable { onPlaylistClick(playlist.playlistId) }
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -236,6 +280,21 @@ private fun PlaylistsTab(
                             modifier = Modifier.size(28.dp),
                             tint = SpotifyGreen
                         )
+                        if (isPlaying) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color.Black.copy(alpha = 0.55f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                NowPlayingIndicator(
+                                    barWidth = 3.dp,
+                                    maxHeight = 16.dp,
+                                    gap = 2.dp
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(14.dp))
@@ -244,7 +303,7 @@ private fun PlaylistsTab(
                         Text(
                             text = playlist.name,
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = Color.White
+                            color = if (isPlaying) SpotifyGreen else Color.White
                         )
                         if (playlist.description.isNotBlank()) {
                             Text(
@@ -255,6 +314,14 @@ private fun PlaylistsTab(
                         }
                     }
 
+                    IconButton(onClick = { onEditPlaylist(playlist) }) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "Edit playlist",
+                            tint = SpotifyTextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     IconButton(onClick = { onDeletePlaylist(playlist) }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
@@ -270,48 +337,63 @@ private fun PlaylistsTab(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CreatePlaylistDialog(
+private fun PlaylistBottomSheet(
+    title: String,
+    initialName: String,
+    initialDescription: String,
     onDismiss: () -> Unit,
-    onCreate: (String, String) -> Unit
+    onConfirm: (String, String) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initialName) }
+    var description by remember { mutableStateOf(initialDescription) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Create Playlist") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { if (name.isNotBlank()) onCreate(name.trim(), description.trim()) },
-                enabled = name.isNotBlank()
-            ) {
-                Text("Create")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+        containerColor = Color(0xFF282828),
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = description,
+                onValueChange = { description = it },
+                label = { Text("Description (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Row {
+                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                    Text("Cancel", color = SpotifyTextSecondary)
+                }
+                TextButton(
+                    onClick = { if (name.isNotBlank()) onConfirm(name.trim(), description.trim()) },
+                    enabled = name.isNotBlank(),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Save", color = SpotifyGreen)
+                }
             }
         }
-    )
+    }
 }

@@ -1,5 +1,6 @@
 package com.ytwrap.app.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ytwrap.app.data.entity.Playlist
@@ -9,6 +10,7 @@ import com.ytwrap.app.data.repository.PlaylistRepository
 import com.ytwrap.app.data.repository.TrackRepository
 import com.ytwrap.app.playback.YouTubeExtractor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,10 +29,48 @@ data class LibraryUiState(
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val trackRepository: TrackRepository,
     private val playlistRepository: PlaylistRepository,
     private val youTubeExtractor: YouTubeExtractor
 ) : ViewModel() {
+
+    private val searchPrefs = context.getSharedPreferences("recent_searches", Context.MODE_PRIVATE)
+    private val _recentSearches = MutableStateFlow<List<String>>(emptyList())
+    val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
+
+    init {
+        loadRecentSearches()
+    }
+
+    private fun loadRecentSearches() {
+        val saved = searchPrefs.getString("searches", "") ?: ""
+        _recentSearches.value = if (saved.isBlank()) emptyList()
+            else saved.split("\u001F").filter { it.isNotBlank() }.take(10)
+    }
+
+    private fun saveRecentSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return
+        val current = _recentSearches.value.toMutableList()
+        current.remove(trimmed)
+        current.add(0, trimmed)
+        val limited = current.take(10)
+        _recentSearches.value = limited
+        searchPrefs.edit().putString("searches", limited.joinToString("\u001F")).apply()
+    }
+
+    fun removeRecentSearch(query: String) {
+        val current = _recentSearches.value.toMutableList()
+        current.remove(query)
+        _recentSearches.value = current
+        searchPrefs.edit().putString("searches", current.joinToString("\u001F")).apply()
+    }
+
+    fun clearRecentSearches() {
+        _recentSearches.value = emptyList()
+        searchPrefs.edit().remove("searches").apply()
+    }
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -51,6 +91,7 @@ class LibraryViewModel @Inject constructor(
             _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
             return
         }
+        saveRecentSearch(query)
         viewModelScope.launch {
             _uiState.update { it.copy(isSearching = true, error = null) }
             youTubeExtractor.search(query)
@@ -84,6 +125,12 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    fun updatePlaylist(playlist: Playlist) {
+        viewModelScope.launch {
+            playlistRepository.updatePlaylist(playlist)
+        }
+    }
+
     fun addTrackToPlaylist(playlistId: Long, track: Track) {
         viewModelScope.launch {
             trackRepository.insertTrack(track)
@@ -108,6 +155,25 @@ class LibraryViewModel @Inject constructor(
                         if (it.videoId == track.videoId) it.copy(isLiked = !track.isLiked) else it
                     }
                 )
+            }
+        }
+    }
+
+    suspend fun searchForBrowse(query: String): List<Track> {
+        val result = youTubeExtractor.search(query, 15)
+        return result.getOrDefault(emptyList())
+    }
+
+    fun reorderTracksInPlaylist(playlistId: Long, videoIds: List<String>) {
+        viewModelScope.launch {
+            playlistRepository.reorderTracks(playlistId, videoIds)
+        }
+    }
+
+    fun reorderLikedTracks(tracks: List<Track>) {
+        viewModelScope.launch {
+            tracks.forEachIndexed { index, track ->
+                trackRepository.updateAddedAt(track.videoId, System.currentTimeMillis() + index)
             }
         }
     }
