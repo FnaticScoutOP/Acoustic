@@ -12,6 +12,7 @@ import com.ytwrap.app.playback.YouTubeExtractor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,6 +85,9 @@ class LibraryViewModel @Inject constructor(
     val playlistsWithTracks: StateFlow<List<PlaylistWithTracks>> =
         playlistRepository.observeAllPlaylistsWithTracks()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun observeOrderedTracksForPlaylist(playlistId: Long): Flow<List<Track>> =
+        playlistRepository.observeTracksForPlaylistOrdered(playlistId)
 
     fun searchYouTube(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
@@ -172,8 +176,9 @@ class LibraryViewModel @Inject constructor(
 
     fun reorderLikedTracks(tracks: List<Track>) {
         viewModelScope.launch {
+            val baseTime = System.currentTimeMillis()
             tracks.forEachIndexed { index, track ->
-                trackRepository.updateAddedAt(track.videoId, System.currentTimeMillis() + index)
+                trackRepository.updateAddedAt(track.videoId, baseTime - index)
             }
         }
     }

@@ -3,6 +3,7 @@ package com.ytwrap.app.data.repository
 import com.ytwrap.app.data.dao.PlaylistDao
 import com.ytwrap.app.data.entity.Playlist
 import com.ytwrap.app.data.entity.PlaylistTrackCrossRef
+import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.data.entity.PlaylistWithTracks
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -16,6 +17,9 @@ class PlaylistRepository @Inject constructor(
 
     fun observePlaylistWithTracks(playlistId: Long): Flow<PlaylistWithTracks?> =
         playlistDao.observePlaylistWithTracks(playlistId)
+
+    fun observeTracksForPlaylistOrdered(playlistId: Long): Flow<List<Track>> =
+        playlistDao.observeTracksForPlaylistOrdered(playlistId)
 
     fun observeAllPlaylistsWithTracks(): Flow<List<PlaylistWithTracks>> =
         playlistDao.observeAllPlaylistsWithTracks()

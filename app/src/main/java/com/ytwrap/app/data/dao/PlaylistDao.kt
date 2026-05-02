@@ -9,6 +9,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.ytwrap.app.data.entity.Playlist
 import com.ytwrap.app.data.entity.PlaylistTrackCrossRef
+import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.data.entity.PlaylistWithTracks
 import kotlinx.coroutines.flow.Flow
 
@@ -33,6 +34,11 @@ interface PlaylistDao {
     @Transaction
     @Query("SELECT * FROM playlists WHERE playlist_id = :playlistId")
     fun observePlaylistWithTracks(playlistId: Long): Flow<PlaylistWithTracks?>
+
+    @Query(
+        "SELECT t.* FROM tracks t INNER JOIN playlist_track_cross_ref p ON t.video_id = p.video_id WHERE p.playlist_id = :playlistId ORDER BY p.position ASC"
+    )
+    fun observeTracksForPlaylistOrdered(playlistId: Long): Flow<List<Track>>
 
     @Transaction
     @Query("SELECT * FROM playlists ORDER BY updated_at DESC")

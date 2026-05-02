@@ -84,14 +84,16 @@ fun PlaylistDetailScreen(
     currentTrackId: String? = null,
     onShowNowPlaying: () -> Unit = {},
     isPlaylistPlaying: Boolean = false,
+    isReordering: Boolean = false,
+    onReorderingChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val playlistsWithTracks by viewModel.playlistsWithTracks.collectAsState()
     val playlistWithTracks = playlistsWithTracks.find { it.playlist.playlistId == playlistId }
+    val tracks by viewModel.observeOrderedTracksForPlaylist(playlistId).collectAsState(initial = emptyList<Track>())
 
     // Track options dialog state
     var trackForOptions by remember { mutableStateOf<Track?>(null) }
-    var isReordering by remember { mutableStateOf(false) }
     val reorderableTracks = remember { mutableStateListOf<Track>() }
 
     AnimatedGradientBackground(modifier = modifier) {
@@ -106,7 +108,14 @@ fun PlaylistDetailScreen(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = {
+                if (isReordering) {
+                    reorderableTracks.clear()
+                    onReorderingChange(false)
+                } else {
+                    onBack()
+                }
+            }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
@@ -129,8 +138,6 @@ fun PlaylistDetailScreen(
                 Text("Playlist not found", color = SpotifyTextSecondary)
             }
         } else {
-            val tracks = playlistWithTracks.tracks
-
             // Playlist info card
             Box(
                 modifier = Modifier
@@ -227,16 +234,16 @@ fun PlaylistDetailScreen(
                 ) {
                     TextButton(onClick = {
                         if (isReordering) {
-                            // Save new order
                             viewModel.reorderTracksInPlaylist(
                                 playlistId,
                                 reorderableTracks.map { it.videoId }
                             )
+                            onReorderingChange(false)
                         } else {
                             reorderableTracks.clear()
                             reorderableTracks.addAll(tracks)
+                            onReorderingChange(true)
                         }
-                        isReordering = !isReordering
                     }) {
                         Text(
                             text = if (isReordering) "Done" else "Reorder",
@@ -272,7 +279,7 @@ fun PlaylistDetailScreen(
                 )
             } else {
                 LazyColumn {
-                    items(tracks, key = { it.videoId }) { track ->
+                    items(items = tracks, key = { it.videoId }) { track: Track ->
                         TrackItem(
                             track = track,
                             onClick = {
@@ -376,10 +383,11 @@ private fun ReorderableTrackList(
                             onDrag = { change, dragAmount ->
                                 change.consume()
                                 dragOffset += dragAmount.y
-                                val targetIndex = (index + (dragOffset / itemHeight.toPx()).roundToInt())
+                                val currentIndex = draggedIndex ?: return@detectDragGesturesAfterLongPress
+                                val targetIndex = (currentIndex + (dragOffset / itemHeight.toPx()).roundToInt())
                                     .coerceIn(0, tracks.size - 1)
-                                if (targetIndex != index && draggedIndex != null) {
-                                    onMove(index, targetIndex)
+                                if (targetIndex != currentIndex) {
+                                    onMove(currentIndex, targetIndex)
                                     draggedIndex = targetIndex
                                     dragOffset = 0f
                                 }
@@ -394,6 +402,13 @@ private fun ReorderableTrackList(
                             }
                         )
                     }
+                    .offset {
+                        IntOffset(
+                            x = 0,
+                            y = if (draggedIndex == index) dragOffset.roundToInt() else 0
+                        )
+                    }
+                    .then(if (draggedIndex == index) Modifier.zIndex(1f) else Modifier)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

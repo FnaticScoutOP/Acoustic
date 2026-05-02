@@ -1,5 +1,7 @@
 package com.ytwrap.app.ui.screens
 
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +30,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.ui.components.AddToPlaylistDialog
@@ -49,6 +52,7 @@ fun MainScreen(
     libraryViewModel: LibraryViewModel,
     statsViewModel: StatsViewModel
 ) {
+    val context = LocalContext.current
     val playerState by playerViewModel.uiState.collectAsState()
     val playlists by libraryViewModel.playlists.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -67,6 +71,56 @@ fun MainScreen(
 
     // Add-to-playlist dialog
     var trackForPlaylistPicker by remember { mutableStateOf<Track?>(null) }
+
+    // Reorder modes
+    var isLikedReordering by remember { mutableStateOf(false) }
+    var isPlaylistReordering by remember { mutableStateOf(false) }
+
+    // Home back press guard
+    var backPressedOnce by remember { mutableStateOf(false) }
+
+    LaunchedEffect(backPressedOnce) {
+        if (backPressedOnce) {
+            kotlinx.coroutines.delay(2000)
+            backPressedOnce = false
+        }
+    }
+
+    BackHandler {
+        when {
+            showNowPlaying -> {
+                showNowPlaying = false
+            }
+            isPlaylistReordering -> {
+                isPlaylistReordering = false
+            }
+            isLikedReordering -> {
+                isLikedReordering = false
+            }
+            showBrowse -> {
+                showBrowse = false
+                openPlaylistId = null
+                selectedTab = 0
+            }
+            openPlaylistId != null -> {
+                openPlaylistId = null
+                selectedTab = 0
+            }
+            selectedTab != 0 -> {
+                selectedTab = 0
+                openPlaylistId = null
+                showBrowse = false
+            }
+            else -> {
+                if (backPressedOnce) {
+                    (context as? android.app.Activity)?.finish()
+                } else {
+                    backPressedOnce = true
+                    Toast.makeText(context, "Press back again to close the app", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     // Show player errors as a Snackbar
     LaunchedEffect(playerState.error) {
@@ -211,7 +265,9 @@ fun MainScreen(
                     onBack = { openPlaylistId = null },
                     currentTrackId = playerState.currentTrack?.videoId,
                     onShowNowPlaying = { showNowPlaying = true },
-                    isPlaylistPlaying = playerState.currentPlaylistId == openPlaylistId
+                    isPlaylistPlaying = playerState.currentPlaylistId == openPlaylistId,
+                    isReordering = isPlaylistReordering,
+                    onReorderingChange = { isPlaylistReordering = it }
                 )
             } else {
                 when (selectedTab) {
@@ -247,7 +303,9 @@ fun MainScreen(
                         initialTab = libraryInitialTab,
                         currentTrackId = playerState.currentTrack?.videoId,
                         onShowNowPlaying = { showNowPlaying = true },
-                        currentPlaylistId = playerState.currentPlaylistId
+                        currentPlaylistId = playerState.currentPlaylistId,
+                        isLikedReordering = isLikedReordering,
+                        onLikedReorderingChange = { isLikedReordering = it }
                     )
                     3 -> StatsScreen(viewModel = statsViewModel)
                 }
