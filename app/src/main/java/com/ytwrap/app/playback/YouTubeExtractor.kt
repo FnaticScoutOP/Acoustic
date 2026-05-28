@@ -46,7 +46,7 @@ class YouTubeExtractor @Inject constructor() {
     companion object {
         private var isInitialized = false
         private const val YT_BASE_URL = "https://www.youtube.com/watch?v="
-        private const val MAX_RETRIES = 2
+        private const val MAX_RETRIES = 3
 
         fun extractVideoId(url: String): String? {
             val patterns = listOf(
@@ -85,12 +85,38 @@ class YouTubeExtractor @Inject constructor() {
                 val extractor = service.getStreamExtractor(url)
                 extractor.fetchPage()
 
-                // Get the best audio-only stream (highest bitrate)
+                // Log available streams for debugging
                 val audioStreams = extractor.audioStreams
+                val videoStreams = extractor.videoStreams
+                val videoOnlyStreams = extractor.videoOnlyStreams
+                android.util.Log.d("YouTubeExtractor",
+                    "Attempt ${attempt + 1} for $videoId: " +
+                    "audioStreams=${audioStreams?.size ?: 0}, " +
+                    "videoStreams=${videoStreams?.size ?: 0}, " +
+                    "videoOnlyStreams=${videoOnlyStreams?.size ?: 0}")
+
+                // Priority: audio-only > video-only (m4a audio from video) > video streams (last resort)
                 val bestAudio = audioStreams
                     ?.sortedByDescending { it.averageBitrate }
                     ?.firstOrNull()
-                    ?: return@withContext Result.failure(Exception("No audio streams found for $videoId"))
+
+                val bestVideoOnly = videoOnlyStreams?.firstOrNull()
+
+                val streamUrl = bestAudio?.content
+                    ?: bestVideoOnly?.content
+                    ?: videoStreams
+                        ?.firstOrNull()
+                        ?.content
+
+                if (streamUrl == null) {
+                    android.util.Log.w("YouTubeExtractor",
+                        "Attempt ${attempt + 1}: no usable streams for $videoId, retrying...")
+                    lastException = Exception("No audio or video streams found for $videoId")
+                    if (attempt < MAX_RETRIES - 1) {
+                        kotlinx.coroutines.delay(1000L * (attempt + 1))
+                    }
+                    return@repeat
+                }
 
                 val thumbnailUrl = extractor.thumbnails
                     ?.maxByOrNull { it.height * it.width }
@@ -100,9 +126,17 @@ class YouTubeExtractor @Inject constructor() {
                 val title = extractor.name ?: "Unknown Title"
                 val durationMs = extractor.length * 1000L
 
+                android.util.Log.d("YouTubeExtractor",
+                    "Success for $videoId: streamUrl length=${streamUrl.length}, " +
+                    "streamType=${when {
+                        bestAudio != null -> "audio"
+                        bestVideoOnly != null -> "videoOnly"
+                        else -> "videoWithAudio"
+                    }}")
+
                 return@withContext Result.success(
                     StreamResult(
-                        audioStreamUrl = bestAudio.content,
+                        audioStreamUrl = streamUrl,
                         title = title,
                         artist = uploaderName,
                         thumbnailUrl = thumbnailUrl,
@@ -111,12 +145,14 @@ class YouTubeExtractor @Inject constructor() {
                 )
             } catch (e: Exception) {
                 lastException = e
+                android.util.Log.e("YouTubeExtractor", "Attempt ${attempt + 1} failed for $videoId: ${e.javaClass.simpleName}: ${e.message}")
                 // Brief delay before retry
                 if (attempt < MAX_RETRIES - 1) {
                     kotlinx.coroutines.delay(500L * (attempt + 1))
                 }
             }
         }
+        android.util.Log.e("YouTubeExtractor", "All retries exhausted for $videoId", lastException)
         Result.failure(lastException ?: Exception("Unknown extraction error"))
     }
 

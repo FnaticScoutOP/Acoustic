@@ -3,6 +3,7 @@ package com.ytwrap.app.ui.viewmodel
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -19,12 +20,16 @@ import com.ytwrap.app.playback.PlaybackService
 import com.ytwrap.app.playback.YouTubeExtractor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 data class PlayerUiState(
@@ -121,6 +126,21 @@ class PlayerViewModel @Inject constructor(
         override fun onRepeatModeChanged(repeatMode: Int) {
             _uiState.update { it.copy(repeatMode = repeatMode) }
         }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            Log.e(TAG, "ExoPlayer error: code=${error.errorCode}, message=${error.message}", error)
+            _uiState.update {
+                it.copy(
+                    error = "Playback error: ${error.message}",
+                    isBuffering = false,
+                    queuingTrackName = null
+                )
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "PlayerViewModel"
     }
 
     private fun startPositionUpdates() {
@@ -139,68 +159,65 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    // Refresh current track data from database to get latest isOffline status
+    fun refreshCurrentTrackFromDb() {
+        viewModelScope.launch {
+            val current = _uiState.value.currentTrack
+            if (current != null) {
+                val dbTrack = trackRepository.getTrackById(current.videoId)
+                if (dbTrack != null && dbTrack.isOffline != current.isOffline) {
+                    _uiState.update { it.copy(currentTrack = dbTrack) }
+                }
+            }
+        }
+    }
+
     /**
      * Play a single track: resolve its stream URL, set metadata, and start playback.
      */
     fun playTrack(track: Track) {
         viewModelScope.launch {
+            Log.d(TAG, "playTrack called: videoId=${track.videoId}, title=${track.title}")
             _uiState.update { it.copy(isBuffering = true, error = null, queuingTrackName = track.title) }
 
-            // Persist track in DB
-            trackRepository.insertTrack(track)
-
-            // Check that the media controller is connected
             val controller = mediaController
             if (controller == null) {
+                Log.e(TAG, "playTrack: mediaController is NULL")
                 _uiState.update {
                     it.copy(
                         isBuffering = false,
-                        error = "Player not ready yet — please try again"
+                        error = "Player not ready yet — please try again",
+                        queuingTrackName = null
                     )
                 }
                 return@launch
             }
 
-            // Resolve stream URL
-            val streamResult = youTubeExtractor.extractStream(track.videoId)
-            streamResult.onSuccess { result ->
-                val mediaItem = MediaItem.Builder()
-                    .setMediaId(track.videoId)
-                    .setUri(result.audioStreamUrl)
-                    .setRequestMetadata(
-                        MediaItem.RequestMetadata.Builder()
-                            .setMediaUri(Uri.parse(result.audioStreamUrl))
-                            .build()
-                    )
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(track.title)
-                            .setArtist(track.artist)
-                            .setAlbumTitle("Acoustic")
-                            .setArtworkUri(Uri.parse(result.thumbnailUrl))
-                            .build()
-                    )
-                    .build()
-
+            val mediaItem = resolveTrackToMediaItem(track)
+            if (mediaItem != null) {
+                Log.d(TAG, "playTrack: resolved mediaItem URI=${mediaItem.localConfiguration?.uri}")
                 controller.setMediaItem(mediaItem)
                 controller.prepare()
                 controller.play()
+                Log.d(TAG, "playTrack: controller.play() called, state=${controller.playbackState}")
 
-                // Read persisted like state from DB
+                // Use persisted track from DB to get latest isOffline/isLiked state
                 val persisted = trackRepository.getTrackById(track.videoId)
+                val updatedTrack = persisted ?: track
                 _uiState.update {
                     it.copy(
-                        currentTrack = track,
-                        isLiked = persisted?.isLiked ?: track.isLiked,
+                        currentTrack = updatedTrack,
+                        isLiked = updatedTrack.isLiked,
                         isBuffering = false,
                         queuingTrackName = null
                     )
                 }
-            }.onFailure { e ->
+            } else {
+                Log.e(TAG, "playTrack: resolveTrackToMediaItem returned null for ${track.videoId}")
                 _uiState.update {
                     it.copy(
                         isBuffering = false,
-                        error = "Failed to load: ${e.message}",
+                        error = "Failed to load track",
                         queuingTrackName = null
                     )
                 }
@@ -208,8 +225,76 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    private suspend fun resolveTrackToMediaItem(track: Track): MediaItem? {
+        Log.d(TAG, "resolveTrack: start videoId=${track.videoId}")
+        trackRepository.insertTrack(track)
+
+        // Check if track is available offline first
+        val persisted = trackRepository.getTrackById(track.videoId)
+        Log.d(TAG, "resolveTrack: persisted=${persisted != null}, isOffline=${persisted?.isOffline}, path=${persisted?.offlineFilePath}")
+        if (persisted != null && persisted.isOffline && persisted.offlineFilePath != null) {
+            val file = java.io.File(persisted.offlineFilePath)
+            Log.d(TAG, "resolveTrack: offline file exists=${file.exists()}, size=${if (file.exists()) file.length() else 0}")
+            if (file.exists()) {
+                Log.d(TAG, "resolveTrack: using offline file ${file.absolutePath}")
+                val fileUri = Uri.fromFile(file)
+                return MediaItem.Builder()
+                    .setMediaId(track.videoId)
+                    .setUri(fileUri)
+                    .setRequestMetadata(
+                        MediaItem.RequestMetadata.Builder()
+                            .setMediaUri(fileUri)
+                            .build()
+                    )
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(track.title)
+                            .setArtist(track.artist)
+                            .setAlbumTitle("Acoustic")
+                            .setArtworkUri(Uri.parse(track.thumbnailUrl))
+                            .build()
+                    )
+                    .build()
+            }
+        }
+
+        Log.d(TAG, "resolveTrack: extracting stream from YouTube for ${track.videoId}")
+        val streamResult = withTimeoutOrNull(15_000L) {
+            youTubeExtractor.extractStream(track.videoId)
+        }
+        if (streamResult == null) {
+            Log.e(TAG, "resolveTrack: TIMEOUT after 15s for ${track.videoId}")
+            return null
+        }
+        streamResult.onFailure { e ->
+            Log.e(TAG, "resolveTrack: extraction FAILED for ${track.videoId}: ${e.javaClass.simpleName}: ${e.message}")
+        }
+        return streamResult.getOrNull()?.let { result ->
+            Log.d(TAG, "resolveTrack: got stream URL (len=${result.audioStreamUrl.length}) for ${track.videoId}")
+            MediaItem.Builder()
+                .setMediaId(track.videoId)
+                .setUri(result.audioStreamUrl)
+                .setRequestMetadata(
+                    MediaItem.RequestMetadata.Builder()
+                        .setMediaUri(Uri.parse(result.audioStreamUrl))
+                        .build()
+                )
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.artist)
+                        .setAlbumTitle("Acoustic")
+                        .setArtworkUri(Uri.parse(result.thumbnailUrl))
+                        .build()
+                )
+                .build()
+        }
+    }
+
     /**
      * Play a list of tracks starting from a given index.
+     * Resolves the target track first for instant playback, then resolves
+     * remaining tracks in parallel in the background.
      */
     fun playQueue(tracks: List<Track>, startIndex: Int = 0) {
         viewModelScope.launch {
@@ -220,47 +305,65 @@ class PlayerViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isBuffering = false,
-                        error = "Player not ready yet — please try again"
+                        error = "Player not ready yet — please try again",
+                        queuingTrackName = null
                     )
                 }
                 return@launch
             }
 
-            val mediaItems = tracks.mapNotNull { track ->
-                trackRepository.insertTrack(track)
-                val streamResult = youTubeExtractor.extractStream(track.videoId)
-                streamResult.getOrNull()?.let { result ->
-                    MediaItem.Builder()
-                        .setMediaId(track.videoId)
-                        .setUri(result.audioStreamUrl)
-                        .setRequestMetadata(
-                            MediaItem.RequestMetadata.Builder()
-                                .setMediaUri(Uri.parse(result.audioStreamUrl))
-                                .build()
-                        )
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(track.title)
-                                .setArtist(track.artist)
-                                .setAlbumTitle("Acoustic")
-                                .setArtworkUri(Uri.parse(result.thumbnailUrl))
-                                .build()
-                        )
-                        .build()
-                }
-            }
+            // Resolve the target track first so playback starts immediately
+            val targetTrack = tracks.getOrNull(startIndex)
+            val targetItem = targetTrack?.let { resolveTrackToMediaItem(it) }
 
-            if (mediaItems.isNotEmpty()) {
-                controller.setMediaItems(mediaItems, startIndex, 0L)
+            if (targetItem != null) {
+                controller.setMediaItem(targetItem)
                 controller.prepare()
                 controller.play()
+
+                val persisted = trackRepository.getTrackById(targetTrack.videoId)
+                val updatedTrack = persisted ?: targetTrack
+                _uiState.update {
+                    it.copy(
+                        currentTrack = updatedTrack,
+                        isLiked = updatedTrack.isLiked,
+                        isBuffering = false,
+                        queuingTrackName = null
+                    )
+                }
+
+                // Resolve remaining tracks in background
+                if (tracks.size > 1) {
+                    viewModelScope.launch {
+                        val remainingItems = withTimeoutOrNull(90_000L) {
+                            supervisorScope {
+                                tracks.mapIndexedNotNull { index, track ->
+                                    if (index == startIndex) null
+                                    else async { resolveTrackToMediaItem(track) }
+                                }.awaitAll().filterNotNull()
+                            }
+                        } ?: emptyList()
+
+                        if (remainingItems.isNotEmpty()) {
+                            // Build full queue: items before startIndex + target + items after
+                            val beforeTarget = remainingItems.take(startIndex)
+                            val afterTarget = remainingItems.drop(startIndex)
+                            val allItems = beforeTarget + listOf(targetItem) + afterTarget
+                            val newStartIndex = beforeTarget.size
+                            val currentPos = controller.currentPosition
+                            controller.setMediaItems(allItems, newStartIndex, currentPos)
+                        }
+                    }
+                }
             } else {
                 _uiState.update {
-                    it.copy(error = "Could not load any tracks")
+                    it.copy(
+                        error = "Could not load track",
+                        isBuffering = false,
+                        queuingTrackName = null
+                    )
                 }
             }
-
-            _uiState.update { it.copy(isBuffering = false, queuingTrackName = null) }
         }
     }
 
@@ -378,8 +481,21 @@ class PlayerViewModel @Inject constructor(
         mediaController?.seekToNextMediaItem()
     }
 
+    private var lastSkipPreviousTime = 0L
+
     fun skipPrevious() {
-        mediaController?.seekToPreviousMediaItem()
+        val controller = mediaController ?: return
+        val now = System.currentTimeMillis()
+        val timeSinceLastPress = now - lastSkipPreviousTime
+        lastSkipPreviousTime = now
+
+        if (timeSinceLastPress < 5000L) {
+            // Second press within 5s — go to previous track
+            controller.seekToPreviousMediaItem()
+        } else {
+            // First press — restart current song from beginning
+            controller.seekTo(0L)
+        }
     }
 
     fun toggleShuffle() {

@@ -8,9 +8,12 @@ import com.ytwrap.app.data.entity.PlaylistWithTracks
 import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.data.repository.PlaylistRepository
 import com.ytwrap.app.data.repository.TrackRepository
+import com.ytwrap.app.playback.TrackDownloadManager
 import com.ytwrap.app.playback.YouTubeExtractor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,7 +36,8 @@ class LibraryViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val trackRepository: TrackRepository,
     private val playlistRepository: PlaylistRepository,
-    private val youTubeExtractor: YouTubeExtractor
+    private val youTubeExtractor: YouTubeExtractor,
+    val trackDownloadManager: TrackDownloadManager
 ) : ViewModel() {
 
     private val searchPrefs = context.getSharedPreferences("recent_searches", Context.MODE_PRIVATE)
@@ -89,32 +93,57 @@ class LibraryViewModel @Inject constructor(
     fun observeOrderedTracksForPlaylist(playlistId: Long): Flow<List<Track>> =
         playlistRepository.observeTracksForPlaylistOrdered(playlistId)
 
+    private var searchDebounceJob: Job? = null
+    private companion object {
+        const val SEARCH_DEBOUNCE_MS = 5000L
+    }
+
+    fun updateSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+        if (query.isBlank()) {
+            searchDebounceJob?.cancel()
+            _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
+            return
+        }
+        // Debounce: wait 5s of idle before auto-searching
+        searchDebounceJob?.cancel()
+        searchDebounceJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            executeSearch(query)
+        }
+    }
+
     fun searchYouTube(query: String) {
+        searchDebounceJob?.cancel()
         _uiState.update { it.copy(searchQuery = query) }
         if (query.isBlank()) {
             _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
             return
         }
-        saveRecentSearch(query)
         viewModelScope.launch {
-            _uiState.update { it.copy(isSearching = true, error = null) }
-            youTubeExtractor.search(query)
-                .onSuccess { results ->
-                    // Merge like state from local DB so hearts reflect persisted state
-                    val merged = results.map { track ->
-                        val existing = trackRepository.getTrackById(track.videoId)
-                        if (existing != null) track.copy(isLiked = existing.isLiked) else track
-                    }
-                    _uiState.update {
-                        it.copy(searchResults = merged, isSearching = false)
-                    }
-                }
-                .onFailure { e ->
-                    _uiState.update {
-                        it.copy(error = e.message, isSearching = false)
-                    }
-                }
+            executeSearch(query)
         }
+    }
+
+    private suspend fun executeSearch(query: String) {
+        saveRecentSearch(query)
+        _uiState.update { it.copy(isSearching = true, error = null) }
+        youTubeExtractor.search(query)
+            .onSuccess { results ->
+                // Merge like state from local DB so hearts reflect persisted state
+                val merged = results.map { track ->
+                    val existing = trackRepository.getTrackById(track.videoId)
+                    if (existing != null) track.copy(isLiked = existing.isLiked) else track
+                }
+                _uiState.update {
+                    it.copy(searchResults = merged, isSearching = false)
+                }
+            }
+            .onFailure { e ->
+                _uiState.update {
+                    it.copy(error = e.message, isSearching = false)
+                }
+            }
     }
 
     fun createPlaylist(name: String, description: String = "") {
@@ -185,5 +214,20 @@ class LibraryViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    val offlineTracks: StateFlow<List<Track>> = trackRepository.observeOfflineTracks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun downloadTrack(track: Track) {
+        viewModelScope.launch {
+            trackDownloadManager.downloadTrack(track)
+        }
+    }
+
+    fun deleteOfflineTrack(track: Track) {
+        viewModelScope.launch {
+            trackDownloadManager.deleteOfflineTrack(track)
+        }
     }
 }

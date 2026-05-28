@@ -17,7 +17,7 @@ import com.ytwrap.app.data.entity.Track
         PlaylistTrackCrossRef::class,
         ListeningEvent::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class YTWrapDatabase : RoomDatabase() {

@@ -26,6 +26,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Battery0Bar
 import androidx.compose.material.icons.filled.Battery2Bar
@@ -70,7 +72,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -97,6 +101,7 @@ fun HomeScreen(
     onStatsTap: () -> Unit,
     onBrowseTap: () -> Unit = {},
     onShowNowPlaying: () -> Unit = {},
+    onTrackMore: (Track) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val playerState by playerViewModel.uiState.collectAsState()
@@ -105,6 +110,7 @@ fun HomeScreen(
     val forgottenGems by statsViewModel.forgottenGems.collectAsState()
     val recentlyAdded by statsViewModel.recentlyAdded.collectAsState()
     val searchState by libraryViewModel.uiState.collectAsState()
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     val greeting = getGreeting()
     val isSearchActive = searchState.searchQuery.isNotBlank()
@@ -161,7 +167,7 @@ fun HomeScreen(
                 // Inline search field
                 TextField(
                     value = searchState.searchQuery,
-                    onValueChange = { libraryViewModel.searchYouTube(it) },
+                    onValueChange = { libraryViewModel.updateSearchQuery(it) },
                     placeholder = {
                         Text("What do you want to listen to?", color = SpotifyTextSecondary, style = MaterialTheme.typography.bodyMedium)
                     },
@@ -170,11 +176,18 @@ fun HomeScreen(
                     },
                     trailingIcon = {
                         if (searchState.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { libraryViewModel.searchYouTube("") }) {
+                            IconButton(onClick = { libraryViewModel.updateSearchQuery("") }) {
                                 Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = Color.White)
                             }
                         }
                     },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            libraryViewModel.searchYouTube(searchState.searchQuery)
+                            keyboardController?.hide()
+                        }
+                    ),
                     singleLine = true,
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = SpotifyGray,
@@ -214,6 +227,7 @@ fun HomeScreen(
                             else playerViewModel.playTrackSmart(track)
                         },
                         onLikeToggle = { libraryViewModel.toggleLike(track) },
+                        onMore = { onTrackMore(track) },
                         isCurrentlyPlaying = track.videoId == playerState.currentTrack?.videoId
                     )
                 }

@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
@@ -184,6 +187,8 @@ fun NowPlayingSheet(
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
     onToggleLike: () -> Unit,
+    onDownload: () -> Unit = {},
+    isOffline: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val track = state.currentTrack ?: return
@@ -279,6 +284,14 @@ fun NowPlayingSheet(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = SpotifyGreen
+                    )
+                }
+
+                IconButton(onClick = onDownload) {
+                    Icon(
+                        imageVector = if (isOffline) Icons.Filled.DownloadDone else Icons.Filled.Download,
+                        contentDescription = if (isOffline) "Downloaded" else "Download",
+                        tint = if (isOffline) SpotifyGreen else Color(0xFFB3B3B3)
                     )
                 }
 
@@ -470,6 +483,82 @@ fun QueuingPopup(
                     overflow = TextOverflow.Ellipsis,
                     color = Color.White
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Download progress popup shown above the mini player while a song is downloading.
+ */
+@Composable
+fun DownloadProgressPopup(
+    downloads: Map<String, com.ytwrap.app.playback.DownloadProgress>,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        downloads.values.forEach { dl ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0xFF1A1A2E),
+                                Color(0xFF2D6A4F).copy(alpha = 0.3f),
+                                Color(0xFF1A1A2E)
+                            )
+                        )
+                    )
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (dl.error != null) {
+                        Icon(
+                            imageVector = Icons.Filled.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFE74C3C),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    } else if (dl.isComplete) {
+                        Icon(
+                            imageVector = Icons.Filled.DownloadDone,
+                            contentDescription = null,
+                            tint = SpotifyGreen,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = when {
+                                dl.error != null -> "Download failed"
+                                dl.isComplete -> "Download complete"
+                                else -> "Downloading… ${(dl.progress * 100).toInt()}%"
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = when {
+                                dl.error != null -> Color(0xFFE74C3C)
+                                dl.isComplete -> SpotifyGreen
+                                else -> SpotifyGreen
+                            }
+                        )
+                    }
+                }
+                if (!dl.isComplete && dl.error == null) {
+                    LinearProgressIndicator(
+                        progress = { dl.progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .height(2.dp),
+                        color = SpotifyGreen,
+                        trackColor = Color.White.copy(alpha = 0.1f)
+                    )
+                }
             }
         }
     }

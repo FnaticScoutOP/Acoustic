@@ -41,7 +41,8 @@ fun TrackItem(
     onLikeToggle: (() -> Unit)? = null,
     onMore: (() -> Unit)? = null,
     isCurrentlyPlaying: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
     Row(
         modifier = modifier
@@ -123,5 +124,7 @@ fun TrackItem(
                 )
             }
         }
+
+        trailingContent?.invoke()
     }
 }

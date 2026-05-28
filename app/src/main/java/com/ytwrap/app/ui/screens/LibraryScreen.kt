@@ -86,6 +86,7 @@ fun LibraryScreen(
     onTrackClickInQueue: (Track, List<Track>) -> Unit,
     onPlaylistClick: (Long) -> Unit,
     onLikeToggle: (Track) -> Unit = { viewModel.toggleLike(it) },
+    onTrackMore: (Track) -> Unit = {},
     initialTab: Int = 0,
     currentTrackId: String? = null,
     onShowNowPlaying: () -> Unit = {},

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,8 +40,10 @@ import com.ytwrap.app.ui.theme.SpotifyTextSecondary
 fun AddToPlaylistDialog(
     playlists: List<Playlist>,
     isLiked: Boolean,
+    isOffline: Boolean = false,
     onToggleLike: () -> Unit,
     onAddToPlaylist: (Long) -> Unit,
+    onDownload: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -79,6 +83,33 @@ fun AddToPlaylistDialog(
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color.White
                 )
+            }
+
+            // Download option
+            if (onDownload != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isOffline) {
+                            onDownload()
+                            onDismiss()
+                        }
+                        .padding(vertical = 16.dp, horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isOffline) Icons.Filled.DownloadDone else Icons.Filled.Download,
+                        contentDescription = null,
+                        tint = if (isOffline) SpotifyGreen else SpotifyTextSecondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = if (isOffline) "Downloaded" else "Download for offline",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isOffline) SpotifyGreen else Color.White
+                    )
+                }
             }
 
             if (playlists.isNotEmpty()) {

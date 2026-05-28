@@ -30,5 +30,11 @@ data class Track(
     val isLiked: Boolean = false,
 
     @ColumnInfo(name = "added_at")
-    val addedAt: Long = System.currentTimeMillis()
+    val addedAt: Long = System.currentTimeMillis(),
+
+    @ColumnInfo(name = "is_offline", defaultValue = "0")
+    val isOffline: Boolean = false,
+
+    @ColumnInfo(name = "offline_file_path", defaultValue = "NULL")
+    val offlineFilePath: String? = null
 )

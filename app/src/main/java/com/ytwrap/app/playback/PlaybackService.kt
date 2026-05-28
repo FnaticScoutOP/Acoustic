@@ -169,17 +169,24 @@ class PlaybackService : MediaSessionService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: List<MediaItem>
         ): ListenableFuture<List<MediaItem>> {
-            // Resolve media items — the controller sends items with just a mediaId,
-            // we resolve them to full URIs here (stream URL, metadata, artwork).
+            // Resolve media items — the controller sends items with requestMetadata.mediaUri,
+            // we resolve them to full URIs here (stream URL or local file, metadata, artwork).
             val resolvedItems = mediaItems.map { item ->
-                item.buildUpon()
-                    .setUri(item.requestMetadata.mediaUri)
-                    .setMediaMetadata(
-                        item.mediaMetadata.buildUpon()
-                            .setArtworkUri(item.mediaMetadata.artworkUri)
-                            .build()
-                    )
-                    .build()
+                val uri = item.requestMetadata.mediaUri
+                    ?: item.localConfiguration?.uri
+                if (uri != null) {
+                    item.buildUpon()
+                        .setUri(uri)
+                        .setMediaMetadata(
+                            item.mediaMetadata.buildUpon()
+                                .setArtworkUri(item.mediaMetadata.artworkUri)
+                                .build()
+                        )
+                        .build()
+                } else {
+                    android.util.Log.e("PlaybackService", "onAddMediaItems: no URI for mediaId=${item.mediaId}")
+                    item
+                }
             }
             return Futures.immediateFuture(resolvedItems)
         }

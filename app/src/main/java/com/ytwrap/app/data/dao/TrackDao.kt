@@ -47,4 +47,10 @@ interface TrackDao {
 
     @Query("SELECT * FROM tracks WHERE is_liked = 1 ORDER BY added_at DESC")
     suspend fun getLikedTracksList(): List<Track>
+
+    @Query("SELECT * FROM tracks WHERE is_offline = 1 ORDER BY added_at DESC")
+    fun observeOfflineTracks(): Flow<List<Track>>
+
+    @Query("UPDATE tracks SET is_offline = :isOffline, offline_file_path = :filePath WHERE video_id = :videoId")
+    suspend fun setOffline(videoId: String, isOffline: Boolean, filePath: String?)
 }

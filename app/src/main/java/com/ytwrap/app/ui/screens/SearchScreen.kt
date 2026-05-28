@@ -54,6 +54,7 @@ fun SearchScreen(
     viewModel: LibraryViewModel,
     onTrackClick: (Track) -> Unit,
     onLikeToggle: (Track) -> Unit,
+    onMore: (Track) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -233,7 +234,8 @@ fun SearchScreen(
                         TrackItem(
                             track = track,
                             onClick = { onTrackClick(track) },
-                            onLikeToggle = { onLikeToggle(track) }
+                            onLikeToggle = { onLikeToggle(track) },
+                            onMore = { onMore(track) }
                         )
                     }
                 }

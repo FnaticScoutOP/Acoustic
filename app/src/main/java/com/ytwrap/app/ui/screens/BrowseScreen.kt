@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.NewReleases
@@ -45,15 +47,26 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.io.File
 import coil.compose.AsyncImage
 import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.ui.components.NowPlayingIndicator
+import com.ytwrap.app.ui.components.TrackItem
 import com.ytwrap.app.ui.theme.AnimatedGradientBackground
 import com.ytwrap.app.ui.theme.SpotifyGray
 import com.ytwrap.app.ui.theme.SpotifyGreen
 import com.ytwrap.app.ui.theme.SpotifyTextSecondary
 import com.ytwrap.app.ui.viewmodel.LibraryViewModel
 import com.ytwrap.app.ui.viewmodel.PlayerViewModel
+
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
+        else -> "${bytes / (1024 * 1024 * 1024)} GB"
+    }
+}
 
 @Composable
 fun BrowseScreen(
@@ -64,6 +77,7 @@ fun BrowseScreen(
     modifier: Modifier = Modifier
 ) {
     val likedTracks by libraryViewModel.likedTracks.collectAsState()
+    val offlineTracks by libraryViewModel.offlineTracks.collectAsState()
     val playerState by playerViewModel.uiState.collectAsState()
     val currentTrackId = playerState.currentTrack?.videoId
 
@@ -170,6 +184,67 @@ fun BrowseScreen(
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
+                    // Offline music section
+                    if (offlineTracks.isNotEmpty()) {
+                        item(key = "offline_header") {
+                            val totalSize = offlineTracks.sumOf { track ->
+                                track.offlineFilePath?.let { File(it).length() } ?: 0L
+                            }
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.DownloadDone,
+                                    contentDescription = null,
+                                    tint = SpotifyGreen,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Offline Music",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text(
+                                    text = "${offlineTracks.size} songs • ${formatFileSize(totalSize)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SpotifyTextSecondary
+                                )
+                            }
+                        }
+                        items(offlineTracks, key = { "offline_${it.videoId}" }) { track ->
+                            val fileSize = track.offlineFilePath?.let { File(it).length() } ?: 0L
+                            TrackItem(
+                                track = track,
+                                onClick = { playerViewModel.playTrack(track) },
+                                isCurrentlyPlaying = track.videoId == currentTrackId,
+                                trailingContent = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = formatFileSize(fileSize),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = SpotifyTextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        IconButton(onClick = { libraryViewModel.deleteOfflineTrack(track) }) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "Remove offline",
+                                                tint = SpotifyTextSecondary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                        item(key = "offline_divider") {
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+
                     // Recommendations section
                     item(key = "rec_header") {
                         Row(

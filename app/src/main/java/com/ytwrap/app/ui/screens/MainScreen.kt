@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.ui.components.AddToPlaylistDialog
+import com.ytwrap.app.ui.components.DownloadProgressPopup
 import com.ytwrap.app.ui.components.MiniPlayer
 import com.ytwrap.app.ui.components.NowPlayingSheet
 import com.ytwrap.app.ui.components.QueuingPopup
@@ -55,6 +56,15 @@ fun MainScreen(
     val context = LocalContext.current
     val playerState by playerViewModel.uiState.collectAsState()
     val playlists by libraryViewModel.playlists.collectAsState()
+    val activeDownloads by libraryViewModel.trackDownloadManager.activeDownloads.collectAsState()
+    val downloadComplete by libraryViewModel.trackDownloadManager.downloadComplete.collectAsState()
+
+    // Refresh current track from database when download completes
+    LaunchedEffect(downloadComplete) {
+        if (downloadComplete != null) {
+            playerViewModel.refreshCurrentTrackFromDb()
+        }
+    }
     var selectedTab by remember { mutableIntStateOf(0) }
     var showNowPlaying by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -150,6 +160,11 @@ fun MainScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Column {
+                // Download progress popup
+                if (activeDownloads.isNotEmpty()) {
+                    DownloadProgressPopup(downloads = activeDownloads)
+                }
+
                 // Queuing popup above the mini player
                 if (playerState.queuingTrackName != null) {
                     QueuingPopup(trackName = playerState.queuingTrackName!!)
@@ -186,7 +201,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0; openPlaylistId = null }
+                        onClick = { selectedTab = 0; openPlaylistId = null; showBrowse = false }
                     )
                     NavigationBarItem(
                         icon = {
@@ -203,7 +218,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1; openPlaylistId = null }
+                        onClick = { selectedTab = 1; openPlaylistId = null; showBrowse = false }
                     )
                     NavigationBarItem(
                         icon = {
@@ -220,7 +235,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2; openPlaylistId = null }
+                        onClick = { selectedTab = 2; openPlaylistId = null; showBrowse = false }
                     )
                     NavigationBarItem(
                         icon = {
@@ -237,7 +252,7 @@ fun MainScreen(
                             )
                         },
                         selected = selectedTab == 3,
-                        onClick = { selectedTab = 3; openPlaylistId = null }
+                        onClick = { selectedTab = 3; openPlaylistId = null; showBrowse = false }
                     )
                 }
             }
@@ -285,16 +300,19 @@ fun MainScreen(
                         },
                         onStatsTap = { selectedTab = 3 },
                         onBrowseTap = { showBrowse = true },
-                        onShowNowPlaying = { showNowPlaying = true }
+                        onShowNowPlaying = { showNowPlaying = true },
+                        onTrackMore = { track -> trackForPlaylistPicker = track }
                     )
                     1 -> SearchScreen(
                         viewModel = libraryViewModel,
                         onTrackClick = { track -> playerViewModel.playTrackSmart(track) },
-                        onLikeToggle = { track -> trackForPlaylistPicker = track }
+                        onLikeToggle = { track -> trackForPlaylistPicker = track },
+                        onMore = { track -> trackForPlaylistPicker = track }
                     )
                     2 -> LibraryScreen(
                         viewModel = libraryViewModel,
                         onTrackClick = { track -> playerViewModel.playTrack(track) },
+                        onTrackMore = { track -> trackForPlaylistPicker = track },
                         onTrackClickInQueue = { track, queue ->
                             playerViewModel.playTrackInQueue(track, queue)
                         },
@@ -330,7 +348,14 @@ fun MainScreen(
                 onSeek = { playerViewModel.seekTo(it) },
                 onToggleShuffle = { playerViewModel.toggleShuffle() },
                 onToggleRepeat = { playerViewModel.toggleRepeat() },
-                onToggleLike = { playerViewModel.toggleLike() }
+                onToggleLike = { playerViewModel.toggleLike() },
+                onDownload = {
+                    playerState.currentTrack?.let { track ->
+                        if (track.isOffline) libraryViewModel.deleteOfflineTrack(track)
+                        else libraryViewModel.downloadTrack(track)
+                    }
+                },
+                isOffline = playerState.currentTrack?.isOffline == true
             )
         }
     }
@@ -341,9 +366,13 @@ fun MainScreen(
         AddToPlaylistDialog(
             playlists = playlists,
             isLiked = track.isLiked,
+            isOffline = track.isOffline,
             onToggleLike = { libraryViewModel.toggleLike(track) },
             onAddToPlaylist = { playlistId ->
                 libraryViewModel.addTrackToPlaylist(playlistId, track)
+            },
+            onDownload = {
+                libraryViewModel.downloadTrack(track)
             },
             onDismiss = { trackForPlaylistPicker = null }
         )

@@ -36,4 +36,9 @@ class TrackRepository @Inject constructor(
     suspend fun updateAddedAt(videoId: String, addedAt: Long) = trackDao.updateAddedAt(videoId, addedAt)
 
     suspend fun getLikedTracksList(): List<Track> = trackDao.getLikedTracksList()
+
+    fun observeOfflineTracks(): Flow<List<Track>> = trackDao.observeOfflineTracks()
+
+    suspend fun setOffline(videoId: String, isOffline: Boolean, filePath: String?) =
+        trackDao.setOffline(videoId, isOffline, filePath)
 }
