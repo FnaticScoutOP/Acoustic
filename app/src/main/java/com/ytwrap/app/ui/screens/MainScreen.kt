@@ -58,10 +58,11 @@ fun MainScreen(
     val playlists by libraryViewModel.playlists.collectAsState()
     val activeDownloads by libraryViewModel.trackDownloadManager.activeDownloads.collectAsState()
     val downloadComplete by libraryViewModel.trackDownloadManager.downloadComplete.collectAsState()
+    val deleteComplete by libraryViewModel.trackDownloadManager.deleteComplete.collectAsState()
 
-    // Refresh current track from database when download completes
-    LaunchedEffect(downloadComplete) {
-        if (downloadComplete != null) {
+    // Refresh current track from database when download or delete completes
+    LaunchedEffect(downloadComplete, deleteComplete) {
+        if (downloadComplete != null || deleteComplete != null) {
             playerViewModel.refreshCurrentTrackFromDb()
         }
     }

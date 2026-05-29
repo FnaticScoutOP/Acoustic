@@ -42,6 +42,9 @@ class TrackDownloadManager @Inject constructor(
     private val _downloadComplete = MutableStateFlow<String?>(null)
     val downloadComplete: StateFlow<String?> = _downloadComplete.asStateFlow()
 
+    private val _deleteComplete = MutableStateFlow<String?>(null)
+    val deleteComplete: StateFlow<String?> = _deleteComplete.asStateFlow()
+
     private fun getDownloadDir(): File {
         // Prefer external storage (SD card / shared storage), fall back to app-internal
         val musicDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
@@ -127,6 +130,9 @@ class TrackDownloadManager @Inject constructor(
             if (file.exists()) file.delete()
         }
         trackRepository.setOffline(track.videoId, false, null)
+        _deleteComplete.value = track.videoId
+        kotlinx.coroutines.delay(500)
+        _deleteComplete.value = null
     }
 
     private fun updateDownloadError(videoId: String, error: String) {

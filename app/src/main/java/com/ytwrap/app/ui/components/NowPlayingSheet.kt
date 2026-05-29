@@ -548,17 +548,6 @@ fun DownloadProgressPopup(
                         )
                     }
                 }
-                if (!dl.isComplete && dl.error == null) {
-                    LinearProgressIndicator(
-                        progress = { dl.progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp)
-                            .height(2.dp),
-                        color = SpotifyGreen,
-                        trackColor = Color.White.copy(alpha = 0.1f)
-                    )
-                }
             }
         }
     }
