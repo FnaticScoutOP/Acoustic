@@ -52,6 +52,7 @@ import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyGreen
 import com.ytwrap.app.ui.theme.SpotifyGreenDark
 import com.ytwrap.app.ui.theme.YTWrapTheme
+import com.ytwrap.app.ui.viewmodel.CloudViewModel
 import com.ytwrap.app.ui.viewmodel.LibraryViewModel
 import com.ytwrap.app.ui.viewmodel.PlayerViewModel
 import com.ytwrap.app.ui.viewmodel.StatsViewModel
@@ -109,11 +110,13 @@ class MainActivity : ComponentActivity() {
                             val playerViewModel: PlayerViewModel = hiltViewModel()
                             val libraryViewModel: LibraryViewModel = hiltViewModel()
                             val statsViewModel: StatsViewModel = hiltViewModel()
+                            val cloudViewModel: CloudViewModel = hiltViewModel()
 
                             MainScreen(
                                 playerViewModel = playerViewModel,
                                 libraryViewModel = libraryViewModel,
-                                statsViewModel = statsViewModel
+                                statsViewModel = statsViewModel,
+                                cloudViewModel = cloudViewModel
                             )
                         }
                     }

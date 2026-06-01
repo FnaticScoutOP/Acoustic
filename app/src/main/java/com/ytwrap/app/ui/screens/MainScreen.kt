@@ -42,6 +42,7 @@ import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyDarkGray
 import com.ytwrap.app.ui.theme.SpotifyGreen
 import com.ytwrap.app.ui.theme.SpotifyTextSecondary
+import com.ytwrap.app.ui.viewmodel.CloudViewModel
 import com.ytwrap.app.ui.viewmodel.LibraryViewModel
 import com.ytwrap.app.ui.viewmodel.PlayerViewModel
 import com.ytwrap.app.ui.viewmodel.StatsViewModel
@@ -51,7 +52,8 @@ import com.ytwrap.app.ui.viewmodel.StatsViewModel
 fun MainScreen(
     playerViewModel: PlayerViewModel,
     libraryViewModel: LibraryViewModel,
-    statsViewModel: StatsViewModel
+    statsViewModel: StatsViewModel,
+    cloudViewModel: CloudViewModel
 ) {
     val context = LocalContext.current
     val playerState by playerViewModel.uiState.collectAsState()
@@ -76,6 +78,12 @@ fun MainScreen(
 
     // Browse screen navigation
     var showBrowse by remember { mutableStateOf(false) }
+
+    // Downloads screen navigation
+    var showDownloads by remember { mutableStateOf(false) }
+
+    // Cloud screen navigation
+    var showCloud by remember { mutableStateOf(false) }
 
     // Library tab initial sub-tab (0=Liked, 1=Playlists)
     var libraryInitialTab by remember { mutableIntStateOf(0) }
@@ -107,6 +115,12 @@ fun MainScreen(
             }
             isLikedReordering -> {
                 isLikedReordering = false
+            }
+            showCloud -> {
+                showCloud = false
+            }
+            showDownloads -> {
+                showDownloads = false
             }
             showBrowse -> {
                 showBrowse = false
@@ -264,7 +278,20 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (showBrowse) {
+            if (showCloud) {
+                CloudScreen(
+                    cloudViewModel = cloudViewModel,
+                    onBack = { showCloud = false }
+                )
+            } else if (showDownloads) {
+                DownloadsScreen(
+                    libraryViewModel = libraryViewModel,
+                    playerViewModel = playerViewModel,
+                    onBack = { showDownloads = false },
+                    onShowNowPlaying = { showNowPlaying = true },
+                    currentTrackId = playerState.currentTrack?.videoId
+                )
+            } else if (showBrowse) {
         BrowseScreen(
             libraryViewModel = libraryViewModel,
             playerViewModel = playerViewModel,
@@ -301,6 +328,8 @@ fun MainScreen(
                         },
                         onStatsTap = { selectedTab = 3 },
                         onBrowseTap = { showBrowse = true },
+                        onDownloadsTap = { showDownloads = true },
+                        onCloudTap = { showCloud = true },
                         onShowNowPlaying = { showNowPlaying = true },
                         onTrackMore = { track -> trackForPlaylistPicker = track }
                     )

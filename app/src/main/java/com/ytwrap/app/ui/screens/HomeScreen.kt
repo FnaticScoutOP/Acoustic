@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -100,6 +102,8 @@ fun HomeScreen(
     onPlaylistsTap: () -> Unit,
     onStatsTap: () -> Unit,
     onBrowseTap: () -> Unit = {},
+    onDownloadsTap: () -> Unit = {},
+    onCloudTap: () -> Unit = {},
     onShowNowPlaying: () -> Unit = {},
     onTrackMore: (Track) -> Unit = {},
     modifier: Modifier = Modifier
@@ -267,7 +271,9 @@ fun HomeScreen(
                     onLikedSongsTap = onLikedSongsTap,
                     onPlaylistsTap = onPlaylistsTap,
                     onStatsTap = onStatsTap,
-                    onBrowseTap = onBrowseTap
+                    onBrowseTap = onBrowseTap,
+                    onDownloadsTap = onDownloadsTap,
+                    onCloudTap = onCloudTap
                 )
                 Spacer(modifier = Modifier.height(20.dp))
             }
@@ -431,13 +437,17 @@ private fun CategoryChipsGrid(
     onLikedSongsTap: () -> Unit,
     onPlaylistsTap: () -> Unit,
     onStatsTap: () -> Unit,
-    onBrowseTap: () -> Unit = {}
+    onBrowseTap: () -> Unit = {},
+    onDownloadsTap: () -> Unit = {},
+    onCloudTap: () -> Unit = {}
 ) {
     val chips = listOf(
         Triple(Icons.Filled.Favorite as ImageVector, "Liked Songs", onLikedSongsTap),
         Triple(Icons.AutoMirrored.Filled.QueueMusic as ImageVector, "Playlists", onPlaylistsTap),
         Triple(Icons.Filled.Star as ImageVector, "Top Songs", onStatsTap),
-        Triple(Icons.Filled.MusicNote as ImageVector, "Browse", onBrowseTap)
+        Triple(Icons.Filled.MusicNote as ImageVector, "Browse", onBrowseTap),
+        Triple(Icons.Filled.DownloadDone as ImageVector, "Downloads", onDownloadsTap),
+        Triple(Icons.Filled.Cloud as ImageVector, "Cloud", onCloudTap)
     )
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         chips.chunked(2).forEach { row ->
