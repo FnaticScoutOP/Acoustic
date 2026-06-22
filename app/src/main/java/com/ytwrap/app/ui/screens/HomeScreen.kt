@@ -26,8 +26,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Battery0Bar
 import androidx.compose.material.icons.filled.Battery2Bar
@@ -35,7 +33,6 @@ import androidx.compose.material.icons.filled.Battery4Bar
 import androidx.compose.material.icons.filled.Battery6Bar
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Cloud
@@ -45,16 +42,11 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -74,9 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -113,11 +103,7 @@ fun HomeScreen(
     val heavyRotation by statsViewModel.heavyRotation.collectAsState()
     val forgottenGems by statsViewModel.forgottenGems.collectAsState()
     val recentlyAdded by statsViewModel.recentlyAdded.collectAsState()
-    val searchState by libraryViewModel.uiState.collectAsState()
-    val keyboardController = LocalSoftwareKeyboardController.current
-
     val greeting = getGreeting()
-    val isSearchActive = searchState.searchQuery.isNotBlank()
 
     // Animated header gradient — cycles through mood colors
     val headerColors = remember {
@@ -148,7 +134,7 @@ fun HomeScreen(
             .fillMaxSize()
             .background(SpotifyBlack)
     ) {
-        // Greeting + Search bar
+        // Greeting header
         item(key = "header") {
             Column(
                 modifier = Modifier
@@ -167,76 +153,10 @@ fun HomeScreen(
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
-                Spacer(modifier = Modifier.height(14.dp))
-                // Inline search field
-                TextField(
-                    value = searchState.searchQuery,
-                    onValueChange = { libraryViewModel.updateSearchQuery(it) },
-                    placeholder = {
-                        Text("What do you want to listen to?", color = SpotifyTextSecondary, style = MaterialTheme.typography.bodyMedium)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White)
-                    },
-                    trailingIcon = {
-                        if (searchState.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { libraryViewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = Color.White)
-                            }
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = {
-                            libraryViewModel.searchYouTube(searchState.searchQuery)
-                            keyboardController?.hide()
-                        }
-                    ),
-                    singleLine = true,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = SpotifyGray,
-                        unfocusedContainerColor = SpotifyGray,
-                        cursorColor = SpotifyGreen,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         }
 
-        // If searching, show search results inline
-        if (isSearchActive) {
-            if (searchState.isSearching) {
-                item(key = "searching") {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = SpotifyGreen)
-                    }
-                }
-            } else if (searchState.searchResults.isEmpty()) {
-                item(key = "no_results") {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text("No results found", color = SpotifyTextSecondary, style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
-            } else {
-                items(searchState.searchResults, key = { "sr_${it.videoId}" }) { track ->
-                    TrackItem(
-                        track = track,
-                        onClick = {
-                            if (track.videoId == playerState.currentTrack?.videoId) onShowNowPlaying()
-                            else playerViewModel.playTrackSmart(track)
-                        },
-                        onLikeToggle = { libraryViewModel.toggleLike(track) },
-                        onMore = { onTrackMore(track) },
-                        isCurrentlyPlaying = track.videoId == playerState.currentTrack?.videoId
-                    )
-                }
-            }
-        } else {
+        run {
             // Quick Start — Resume card
             val lastTrack = playerState.currentTrack ?: recentlyPlayed.firstOrNull()
             if (lastTrack != null) {

@@ -4,8 +4,10 @@ import android.net.Uri
 import com.ytwrap.app.data.entity.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -193,5 +195,131 @@ class YouTubeExtractor @Inject constructor() {
     suspend fun resolveTrackToUri(track: Track): Uri? {
         val result = extractStream(track.videoId)
         return result.getOrNull()?.let { Uri.parse(it.audioStreamUrl) }
+    }
+
+    /**
+     * Data class representing a YouTube channel for filtering.
+     */
+    data class ChannelResult(
+        val name: String,
+        val url: String,
+        val thumbnailUrl: String,
+        val subscriberCount: Long = -1,
+        val description: String = ""
+    )
+
+    /**
+     * Searches YouTube for channels matching the query.
+     */
+    suspend fun searchChannels(query: String, maxResults: Int = 10): Result<List<ChannelResult>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val service = NewPipe.getService(ServiceList.YouTube.serviceId)
+                val searchExtractor = service.getSearchExtractor(
+                    query,
+                    listOf("channels"),
+                    ""
+                )
+                searchExtractor.fetchPage()
+
+                val channels = searchExtractor.initialPage.items
+                    .filterIsInstance<ChannelInfoItem>()
+                    .take(maxResults)
+                    .map { item ->
+                        ChannelResult(
+                            name = item.name ?: "Unknown Channel",
+                            url = item.url ?: "",
+                            thumbnailUrl = item.thumbnails
+                                ?.maxByOrNull { it.height * it.width }
+                                ?.url ?: "",
+                            subscriberCount = item.subscriberCount,
+                            description = item.description ?: ""
+                        )
+                    }
+                Result.success(channels)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /**
+     * Gets videos from a specific channel URL by fetching the channel's Videos tab.
+     */
+    suspend fun getChannelVideos(channelUrl: String, maxResults: Int = 30): Result<List<Track>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val service = NewPipe.getService(ServiceList.YouTube.serviceId)
+                val channelExtractor = service.getChannelExtractor(channelUrl)
+                channelExtractor.fetchPage()
+
+                val channelName = channelExtractor.name ?: "Unknown"
+
+                // NewPipe v0.26+: channel content is organized in tabs
+                val tabs = channelExtractor.tabs
+                val videosTab = tabs.firstOrNull { tab ->
+                    tab.contentFilters.any { it.contains("video", ignoreCase = true) }
+                } ?: tabs.firstOrNull()
+
+                if (videosTab != null) {
+                    val tabExtractor = service.getChannelTabExtractor(videosTab)
+                    tabExtractor.fetchPage()
+
+                    val items = tabExtractor.initialPage.items
+                        .filterIsInstance<StreamInfoItem>()
+                        .take(maxResults)
+                        .map { item ->
+                            val videoId = extractVideoId(item.url) ?: ""
+                            Track(
+                                videoId = videoId,
+                                title = item.name ?: "Unknown",
+                                artist = item.uploaderName ?: channelName,
+                                thumbnailUrl = item.thumbnails
+                                    ?.maxByOrNull { it.height * it.width }
+                                    ?.url ?: "",
+                                durationMs = item.duration * 1000L
+                            )
+                        }
+                    Result.success(items)
+                } else {
+                    Result.success(emptyList())
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /**
+     * Resolves a YouTube URL (video link) to a Track.
+     * Supports youtube.com/watch?v=, youtu.be/, youtube.com/shorts/, etc.
+     */
+    suspend fun resolveVideoLink(url: String): Result<Track> = withContext(Dispatchers.IO) {
+        try {
+            val videoId = extractVideoId(url)
+                ?: return@withContext Result.failure(Exception("Invalid YouTube URL"))
+
+            val streamResult = extractStream(videoId)
+            streamResult.map { sr ->
+                Track(
+                    videoId = videoId,
+                    title = sr.title,
+                    artist = sr.artist,
+                    thumbnailUrl = sr.thumbnailUrl,
+                    durationMs = sr.durationMs
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Checks if a string looks like a YouTube URL.
+     */
+    fun isYouTubeLink(text: String): Boolean {
+        val trimmed = text.trim()
+        return trimmed.contains("youtube.com/") ||
+                trimmed.contains("youtu.be/") ||
+                trimmed.contains("youtube.com/shorts/") ||
+                trimmed.contains("music.youtube.com/")
     }
 }

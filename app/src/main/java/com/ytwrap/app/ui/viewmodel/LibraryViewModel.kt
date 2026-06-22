@@ -10,6 +10,7 @@ import com.ytwrap.app.data.repository.PlaylistRepository
 import com.ytwrap.app.data.repository.TrackRepository
 import com.ytwrap.app.playback.TrackDownloadManager
 import com.ytwrap.app.playback.YouTubeExtractor
+import com.ytwrap.app.playback.YouTubeExtractor.ChannelResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -24,11 +25,25 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class ChannelFilter(
+    val name: String,
+    val url: String,
+    val thumbnailUrl: String = ""
+)
+
 data class LibraryUiState(
     val searchQuery: String = "",
     val searchResults: List<Track> = emptyList(),
     val isSearching: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    // Channel filter state
+    val channelFilters: List<ChannelFilter> = emptyList(),
+    val channelSearchQuery: String = "",
+    val channelSearchResults: List<ChannelResult> = emptyList(),
+    val isSearchingChannels: Boolean = false,
+    // YT link resolution
+    val resolvedLinkTrack: Track? = null,
+    val isResolvingLink: Boolean = false
 )
 
 @HiltViewModel
@@ -117,11 +132,21 @@ class LibraryViewModel @Inject constructor(
         searchDebounceJob?.cancel()
         _uiState.update { it.copy(searchQuery = query) }
         if (query.isBlank()) {
-            _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
+            _uiState.update { it.copy(searchResults = emptyList(), isSearching = false, resolvedLinkTrack = null) }
             return
         }
-        viewModelScope.launch {
-            executeSearch(query)
+        // Check if input is a YouTube link
+        if (youTubeExtractor.isYouTubeLink(query)) {
+            resolveYouTubeLink(query)
+            return
+        }
+        // Check if channel filters are active
+        if (_uiState.value.channelFilters.isNotEmpty()) {
+            rerunSearchWithFilters()
+        } else {
+            viewModelScope.launch {
+                executeSearch(query)
+            }
         }
     }
 
@@ -215,6 +240,133 @@ class LibraryViewModel @Inject constructor(
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
+
+    // ── Channel filter methods ───────────────────────────────────────────
+
+    private var channelSearchJob: Job? = null
+
+    fun searchChannels(query: String) {
+        _uiState.update { it.copy(channelSearchQuery = query) }
+        if (query.isBlank()) {
+            _uiState.update { it.copy(channelSearchResults = emptyList(), isSearchingChannels = false) }
+            return
+        }
+        channelSearchJob?.cancel()
+        channelSearchJob = viewModelScope.launch {
+            delay(400) // debounce
+            _uiState.update { it.copy(isSearchingChannels = true) }
+            youTubeExtractor.searchChannels(query)
+                .onSuccess { channels ->
+                    _uiState.update { it.copy(channelSearchResults = channels, isSearchingChannels = false) }
+                }
+                .onFailure {
+                    _uiState.update { it.copy(channelSearchResults = emptyList(), isSearchingChannels = false) }
+                }
+        }
+    }
+
+    fun addChannelFilter(channel: ChannelResult) {
+        val filter = ChannelFilter(
+            name = channel.name,
+            url = channel.url,
+            thumbnailUrl = channel.thumbnailUrl
+        )
+        val current = _uiState.value.channelFilters
+        if (current.none { it.url == filter.url }) {
+            _uiState.update {
+                it.copy(
+                    channelFilters = current + filter,
+                    channelSearchQuery = "",
+                    channelSearchResults = emptyList()
+                )
+            }
+            // Re-run search with channel filters
+            rerunSearchWithFilters()
+        }
+    }
+
+    fun removeChannelFilter(filter: ChannelFilter) {
+        _uiState.update {
+            it.copy(channelFilters = it.channelFilters.filter { f -> f.url != filter.url })
+        }
+        // Re-run search with updated filters
+        rerunSearchWithFilters()
+    }
+
+    fun clearChannelFilters() {
+        _uiState.update { it.copy(channelFilters = emptyList()) }
+        rerunSearchWithFilters()
+    }
+
+    fun clearChannelSearch() {
+        channelSearchJob?.cancel()
+        _uiState.update { it.copy(channelSearchQuery = "", channelSearchResults = emptyList(), isSearchingChannels = false) }
+    }
+
+    private fun rerunSearchWithFilters() {
+        val query = _uiState.value.searchQuery
+        if (query.isBlank()) return
+
+        val filters = _uiState.value.channelFilters
+        if (filters.isEmpty()) {
+            // No channel filters, do normal search
+            viewModelScope.launch { executeSearch(query) }
+        } else {
+            // Search within filtered channels
+            viewModelScope.launch {
+                _uiState.update { it.copy(isSearching = true, error = null) }
+                val allTracks = mutableListOf<Track>()
+                for (filter in filters) {
+                    youTubeExtractor.getChannelVideos(filter.url, 50)
+                        .onSuccess { tracks ->
+                            // Filter tracks by search query
+                            val matching = if (query.isBlank()) tracks
+                            else tracks.filter { t ->
+                                t.title.contains(query, ignoreCase = true) ||
+                                    t.artist.contains(query, ignoreCase = true)
+                            }
+                            allTracks.addAll(matching)
+                        }
+                }
+                // Merge like state
+                val merged = allTracks.map { track ->
+                    val existing = trackRepository.getTrackById(track.videoId)
+                    if (existing != null) track.copy(isLiked = existing.isLiked) else track
+                }
+                _uiState.update { it.copy(searchResults = merged, isSearching = false) }
+            }
+        }
+    }
+
+    // ── YouTube link resolution ──────────────────────────────────────────
+
+    fun resolveYouTubeLink(url: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isResolvingLink = true, resolvedLinkTrack = null) }
+            youTubeExtractor.resolveVideoLink(url)
+                .onSuccess { track ->
+                    // Show as first search result
+                    val existing = trackRepository.getTrackById(track.videoId)
+                    val merged = if (existing != null) track.copy(isLiked = existing.isLiked) else track
+                    _uiState.update {
+                        it.copy(
+                            resolvedLinkTrack = merged,
+                            searchResults = listOf(merged) + it.searchResults.filter { r -> r.videoId != merged.videoId },
+                            isResolvingLink = false
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(isResolvingLink = false, error = "Could not resolve link: ${e.message}") }
+                }
+        }
+    }
+
+    fun clearResolvedLink() {
+        _uiState.update { it.copy(resolvedLinkTrack = null) }
+    }
+
+    fun isYouTubeLink(text: String): Boolean = youTubeExtractor.isYouTubeLink(text)
 
     val offlineTracks: StateFlow<List<Track>> = trackRepository.observeOfflineTracks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
