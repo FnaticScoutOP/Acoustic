@@ -193,8 +193,8 @@ class PlayerViewModel @Inject constructor(
                 return@launch
             }
 
-            val mediaItem = resolveTrackToMediaItem(track)
-            if (mediaItem != null) {
+            val result = resolveTrackToMediaItem(track)
+            result.onSuccess { mediaItem ->
                 Log.d(TAG, "playTrack: resolved mediaItem URI=${mediaItem.localConfiguration?.uri}")
                 controller.setMediaItem(mediaItem)
                 controller.prepare()
@@ -212,12 +212,12 @@ class PlayerViewModel @Inject constructor(
                         queuingTrackName = null
                     )
                 }
-            } else {
-                Log.e(TAG, "playTrack: resolveTrackToMediaItem returned null for ${track.videoId}")
+            }.onFailure { e ->
+                Log.e(TAG, "playTrack: resolveTrackToMediaItem failed for ${track.videoId}", e)
                 _uiState.update {
                     it.copy(
                         isBuffering = false,
-                        error = "Failed to load track",
+                        error = friendlyError(e),
                         queuingTrackName = null
                     )
                 }
@@ -225,7 +225,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private suspend fun resolveTrackToMediaItem(track: Track): MediaItem? {
+    private suspend fun resolveTrackToMediaItem(track: Track): Result<MediaItem> {
         Log.d(TAG, "resolveTrack: start videoId=${track.videoId}")
         trackRepository.insertTrack(track)
 
@@ -238,7 +238,7 @@ class PlayerViewModel @Inject constructor(
             if (file.exists()) {
                 Log.d(TAG, "resolveTrack: using offline file ${file.absolutePath}")
                 val fileUri = Uri.fromFile(file)
-                return MediaItem.Builder()
+                return Result.success(MediaItem.Builder()
                     .setMediaId(track.videoId)
                     .setUri(fileUri)
                     .setRequestMetadata(
@@ -254,7 +254,7 @@ class PlayerViewModel @Inject constructor(
                             .setArtworkUri(Uri.parse(track.thumbnailUrl))
                             .build()
                     )
-                    .build()
+                    .build())
             }
         }
 
@@ -264,12 +264,12 @@ class PlayerViewModel @Inject constructor(
         }
         if (streamResult == null) {
             Log.e(TAG, "resolveTrack: TIMEOUT after 15s for ${track.videoId}")
-            return null
+            return Result.failure(Exception("Connection timed out"))
         }
         streamResult.onFailure { e ->
             Log.e(TAG, "resolveTrack: extraction FAILED for ${track.videoId}: ${e.javaClass.simpleName}: ${e.message}")
         }
-        return streamResult.getOrNull()?.let { result ->
+        return streamResult.map { result ->
             Log.d(TAG, "resolveTrack: got stream URL (len=${result.audioStreamUrl.length}) for ${track.videoId}")
             MediaItem.Builder()
                 .setMediaId(track.videoId)
@@ -288,6 +288,25 @@ class PlayerViewModel @Inject constructor(
                         .build()
                 )
                 .build()
+        }
+    }
+
+    private fun friendlyError(e: Throwable): String {
+        val msg = e.message ?: ""
+        return when {
+            e is java.net.UnknownHostException || msg.contains("Unable to resolve host") ->
+                "No internet connection"
+            e is java.net.SocketTimeoutException || msg.contains("timed out", ignoreCase = true) ->
+                "Connection timed out"
+            msg.contains("HTTP 403") || msg.contains("Sign in to confirm") ->
+                "YouTube blocked this request"
+            msg.contains("not available") || msg.contains("removed") ->
+                "This video is unavailable"
+            msg.contains("age") || msg.contains("Sign in") ->
+                "Age-restricted video"
+            msg.contains("No audio or video streams") ->
+                "No playable streams found"
+            else -> msg.take(80).ifEmpty { "Unknown error" }
         }
     }
 
@@ -314,14 +333,15 @@ class PlayerViewModel @Inject constructor(
 
             // Resolve the target track first so playback starts immediately
             val targetTrack = tracks.getOrNull(startIndex)
-            val targetItem = targetTrack?.let { resolveTrackToMediaItem(it) }
+            val targetResult = targetTrack?.let { resolveTrackToMediaItem(it) }
 
+            val targetItem = targetResult?.getOrNull()
             if (targetItem != null) {
                 controller.setMediaItem(targetItem)
                 controller.prepare()
                 controller.play()
 
-                val persisted = trackRepository.getTrackById(targetTrack.videoId)
+                val persisted = trackRepository.getTrackById(targetTrack!!.videoId)
                 val updatedTrack = persisted ?: targetTrack
                 _uiState.update {
                     it.copy(
@@ -340,7 +360,7 @@ class PlayerViewModel @Inject constructor(
                                 tracks.mapIndexedNotNull { index, track ->
                                     if (index == startIndex) null
                                     else async { resolveTrackToMediaItem(track) }
-                                }.awaitAll().filterNotNull()
+                                }.awaitAll().mapNotNull { it.getOrNull() }
                             }
                         } ?: emptyList()
 
@@ -356,9 +376,10 @@ class PlayerViewModel @Inject constructor(
                     }
                 }
             } else {
+                val reason = targetResult?.exceptionOrNull()?.let { friendlyError(it) } ?: "Could not load track"
                 _uiState.update {
                     it.copy(
-                        error = "Could not load track",
+                        error = reason,
                         isBuffering = false,
                         queuingTrackName = null
                     )
