@@ -47,21 +47,16 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -74,6 +69,7 @@ import com.ytwrap.app.data.dao.TrackPlayCount
 import com.ytwrap.app.data.entity.Track
 import com.ytwrap.app.ui.components.NowPlayingIndicator
 import com.ytwrap.app.ui.components.TrackItem
+import com.ytwrap.app.ui.theme.AnimatedGradientBackground
 import com.ytwrap.app.ui.theme.SpotifyBlack
 import com.ytwrap.app.ui.theme.SpotifyGray
 import com.ytwrap.app.ui.theme.SpotifyGreen
@@ -105,48 +101,17 @@ fun HomeScreen(
     val recentlyAdded by statsViewModel.recentlyAdded.collectAsState()
     val greeting = getGreeting()
 
-    // Animated header gradient — cycles through mood colors
-    val headerColors = remember {
-        listOf(
-            Color(0xFF1DB954), // green
-            Color(0xFF8B5CF6), // purple
-            Color(0xFFE67E22), // warm orange
-            Color(0xFF14B8A6), // teal
-            Color(0xFFE84393), // rose
-            Color(0xFF3B82F6), // blue
-        )
-    }
-    var colorIndex by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(4000)
-            colorIndex = (colorIndex + 1) % headerColors.size
-        }
-    }
-    val animatedColor by animateColorAsState(
-        targetValue = headerColors[colorIndex].copy(alpha = 0.30f),
-        animationSpec = tween(durationMillis = 2000, easing = LinearEasing),
-        label = "headerGradient"
-    )
-
+    AnimatedGradientBackground(modifier = modifier) {
     LazyColumn(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(SpotifyBlack)
     ) {
         // Greeting header
         item(key = "header") {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(animatedColor, SpotifyBlack),
-                            startY = 0f,
-                            endY = 400f
-                        )
-                    )
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp)
             ) {
                 Text(
                     text = greeting,
@@ -161,7 +126,7 @@ fun HomeScreen(
             val lastTrack = playerState.currentTrack ?: recentlyPlayed.firstOrNull()
             if (lastTrack != null) {
                 item(key = "quickstart") {
-                    SectionTitle("Quick Start")
+                    // SectionTitle("Quick Start")
                     ResumeCard(
                         track = lastTrack,
                         isPlaying = playerState.isPlaying && playerState.currentTrack?.videoId == lastTrack.videoId,
@@ -273,6 +238,7 @@ fun HomeScreen(
             }
         }
     }
+    } // AnimatedGradientBackground
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

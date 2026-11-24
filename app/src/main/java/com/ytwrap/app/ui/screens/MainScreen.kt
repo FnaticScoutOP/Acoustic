@@ -70,7 +70,7 @@ fun MainScreen(
     }
     var selectedTab by remember { mutableIntStateOf(0) }
     var showNowPlaying by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Playlist detail navigation

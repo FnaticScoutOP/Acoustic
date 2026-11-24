@@ -1,5 +1,8 @@
 package com.ytwrap.app.ui.screens
 
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -101,7 +104,7 @@ fun SearchScreen(
         ) {
             TextField(
                 value = uiState.searchQuery,
-                onValueChange = { viewModel.searchYouTube(it) },
+                onValueChange = { viewModel.updateSearchQuery(it) },
                 placeholder = {
                     Text(
                         "Search or paste YouTube link",
@@ -130,6 +133,10 @@ fun SearchScreen(
                     }
                 },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = { viewModel.searchYouTube(uiState.searchQuery) }
+                ),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = SpotifyGray,
                     unfocusedContainerColor = SpotifyGray,

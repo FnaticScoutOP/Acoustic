@@ -351,14 +351,16 @@ fun NowPlayingSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Music visualizer above controls
-            if (state.isPlaying) {
-                MusicVisualizer(
-                    modifier = Modifier.fillMaxWidth().height(40.dp),
-                    barCount = 32
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+            // Music visualizer above controls (always reserve space to prevent layout jumps)
+            Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
+                if (state.isPlaying) {
+                    MusicVisualizer(
+                        modifier = Modifier.fillMaxWidth().height(40.dp),
+                        barCount = 32
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Transport controls
             Row(

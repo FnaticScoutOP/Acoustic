@@ -135,6 +135,8 @@ class LibraryViewModel @Inject constructor(
             _uiState.update { it.copy(searchResults = emptyList(), isSearching = false, resolvedLinkTrack = null) }
             return
         }
+        // Save to recent searches only on explicit submit
+        saveRecentSearch(query)
         // Check if input is a YouTube link
         if (youTubeExtractor.isYouTubeLink(query)) {
             resolveYouTubeLink(query)
@@ -151,7 +153,6 @@ class LibraryViewModel @Inject constructor(
     }
 
     private suspend fun executeSearch(query: String) {
-        saveRecentSearch(query)
         _uiState.update { it.copy(isSearching = true, error = null) }
         youTubeExtractor.search(query)
             .onSuccess { results ->
